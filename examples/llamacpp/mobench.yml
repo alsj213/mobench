@@ -1,0 +1,31 @@
+# llama.cpp llama-bench 配置示例（host / adb）
+# 用法：复制到 llama.cpp 工程根（或用 --config 指向本文件），按注释改路径。
+# 引擎与契约见 README「Engine support」。
+engine: llamacpp
+
+platform:
+  type: host            # host | adb
+  # 切 adb 时（被测为 Android llama-bench 产物）：
+  # type: adb
+  # adb: /path/to/adb            # adb 可执行
+  # device_id: <serial>          # adb devices 里的设备号
+
+build:
+  bin_dir: ./build/bin          # 被测产物目录（含 llama-bench；adb 时为本地 Android 产物，mobench 整目录推送）
+  bench_bin: llama-bench
+  source_dir: .                 # llama.cpp 源码根（env 里 git commit 溯源；可不填）
+
+workload:
+  threads: [8]                  # 可用列表做多线程扫描，如 [4, 8]
+  rounds: 5                     # 正式统计 ≥5；快速试跑可改 1
+  prompt_tokens: 128            # -p
+  gen_tokens: 128               # -n
+
+models:
+  # 单文件 .gguf
+  - id: my-model
+    path: ./models/my-model-q4_k_m.gguf
+    kind: llm
+    precision: q4_k_m           # 分组/报告用；按实际量化填
+
+results_dir: results

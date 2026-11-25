@@ -1,0 +1,4 @@
+load_backend: loaded CPU backend from libggml-cpu.so
+llama_model_loader: loaded meta data with 29 key-value pairs and 291 tensors from ../Qwen3-0.6B-Q4_K_M.gguf (version GGUF V3 (latest))
+llama_perplexity: calculating perplexity over 8 chunks, n_ctx=1024, batch_size=2048, n_seq=1
+llama_perplexity: [1]4.2893,[2]3.8775,[3]

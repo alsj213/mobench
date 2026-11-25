@@ -1,0 +1,10 @@
+ Performance counter stats for '/opt/mnn/build_host_llm/llm_bench -m /opt/models/llm/Qwen3-0.6B-MNN-q4k-m/config.json -t 4 -pg 8,16 -rep 1 -j /dev/null':
+
+      179954995060      cpu-cycles:u                                                
+      336732283103      instructions:u            #    1.87  insn per cycle         
+         828228523      cache-misses:u            #    7.720 % of all cache refs    
+       10727660980      cache-references:u                                          
+       65968565553      L1-dcache-loads:u                                           
+        5648595573      L1-dcache-load-misses:u   #    8.56% of all L1-dcache accesses
+
+      22.806200269 seconds time elapsed

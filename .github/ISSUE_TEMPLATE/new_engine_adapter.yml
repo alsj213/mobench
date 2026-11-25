@@ -1,0 +1,27 @@
+name: 新增推理引擎适配器
+description: 申请支持新的推理引擎（如 ncnn、ONNX Runtime、TVM 等）
+title: "[Adapter]: "
+labels: ["adapter", "enhancement"]
+body:
+  - type: input
+    id: engine
+    attributes:
+      label: 目标引擎名称
+      placeholder: 例如：ncnn / onnxruntime / tvm
+    validations:
+      required: true
+  - type: textarea
+    id: cli
+    attributes:
+      label: 引擎原生测速工具与命令形态
+      description: 提供可执行文件名、常用命令行参数示例与支持平台（host / adb）。
+    validations:
+      required: true
+  - type: textarea
+    id: sample_output
+    attributes:
+      label: 真实输出样例
+      description: 粘贴一次真实运行的标准输出/JSON 日志，便于设计精确解析器。
+      render: text
+    validations:
+      required: true

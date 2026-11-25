@@ -1,0 +1,4 @@
+build: 7165 (ab86af2df)
+main: llama backend init
+llama_model_loader: loaded meta data with 29 key-value pairs and 291 tensors from ../Qwen3-0.6B-Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_load: error loading model: check_tensor_dims: tensor 'blk.0.attn_norm.weight' has wrong shape

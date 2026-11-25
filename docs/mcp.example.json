@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mobench": {
+      "command": "python3",
+      "args": ["-m", "mobench.mcp_server"],
+      "cwd": "/path/to/mobench"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+build: 7165 (ab86af2df)
+main: llama backend init
+main: load the model and apply lora adapter, if any
+llama_model_loader: loaded meta data with 29 key-value pairs and 291 tensors from ../Qwen3-0.6B-Q4_K_M.gguf (version GGUF V3 (latest))
+print_info: model type	= 0.6B
+print_info: model params	= 596.05 M
+print_info: file format = GGUF V3 (latest)
+print_info: file type   = Q4_K - Medium
+llama_context: constructing llama_context
+llama_context: n_seq_max     = 1
+llama_context: n_ctx         = 8192
+llama_context: n_batch       = 2048
+llama_context: n_ubatch      = 512
+llama_context: n_threads     = 4
+sampler seed: 1977023547
+sampler params: 
+	repeat_last_n = 64, repeat_penalty = 1.000, frequency_penalty = 0.000, presence_penalty = 0.000, dry_multiplier = 0.000, dry_base = 1.750, dry_allowed_length = 2, dry_penalty_last_n = -1, top_k = 40, top_p = 0.950, min_p = 0.050, xtc_probability = 0.000, xtc_threshold = 0.100, typ_p = 1.000, temp = 0.000, dynatemp_range = 0.000, dynatemp_exponent = 1.000, mirostat = 0, mirostat_tau = 5.000, mirostat_eta = 0.100, greedy = true
+sampler chain: logits -> penalties -> dry -> top_k -> top_p -> min_p -> xtc -> temp_ext -> dist
+generate: n_ctx = 8192, n_batch = 2048, n_predict = 64, n_keep = 0
+The capital of France is Paris, its largest city. Paris is known for [end of text]
+
+
+common_perf_print:    sampling time =       8.11 ms
+common_perf_print:    samplers time =       0.21 ms /    17 tokens
+common_perf_print:        load time =     431.22 ms
+common_perf_print: prompt eval time =      38.71 ms /   512 tokens (    0.08 ms per token, 13227.85 tokens per second)
+common_perf_print:        eval time =     377.41 ms /    16 runs   (   23.59 ms per token,    42.40 tokens per second)
+common_perf_print:       total time =     824.23 ms /   528 tokens
+common_perf_print:    unaccounted time =       1.02 ms /   0.12 %

@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run pytest with coverage
+        run: |
+          python -m pytest tests/ -q --cov=mobench --cov-report=term-missing
+
+      - name: Verify CLI entrypoint
+        run: |
+          mobench --help
+
+  hygiene:
+    name: Repository Hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check JSON & YAML syntax
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate JSON/YAML and scan for personal paths
+        run: |
+          pip install PyYAML
+          python - <<'EOF'
+          import glob, json, sys, yaml
+
+          for p in glob.glob("**/*.json", recursive=True):
+              with open(p, encoding="utf-8") as f:
+                  json.load(f)
+          for p in glob.glob("**/*.yml", recursive=True) + glob.glob("**/*.yaml", recursive=True):
+              with open(p, encoding="utf-8") as f:
+                  yaml.safe_load(f)
+          print("All JSON/YAML files are valid.")
+          EOF
+          if git grep -n -E '(/home/[a-zA-Z0-9._-]+/|/Users/[a-zA-Z0-9._-]+/)' -- ':!.github/workflows/ci.yml'; then
+            echo "ERROR: Personal local path detected in tracked files."
+            exit 1
+          fi

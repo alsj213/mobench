@@ -1,0 +1,215 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/alsj213/mobench/blob/main/schema/mobench.schema.json",
+  "title": "mobench.yml",
+  "description": "Target/engine declaration for the mobench generic engine benchmarking core.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "engine",
+    "models"
+  ],
+  "properties": {
+    "engine": {
+      "type": "string",
+      "enum": [
+        "llamacpp",
+        "mnn"
+      ],
+      "description": "Framework adapter id (add new engines by registering an adapter)."
+    },
+    "platform": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "host",
+            "adb"
+          ],
+          "default": "host"
+        },
+        "adb": {
+          "type": "string",
+          "description": "Path to adb; required when type=adb"
+        },
+        "device_id": {
+          "type": "string",
+          "description": "adb device serial; required when type=adb"
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "properties": {
+        "source_dir": {
+          "type": "string",
+          "default": "."
+        },
+        "bin_dir": {
+          "type": "string"
+        },
+        "bench_bin": {
+          "type": "string"
+        }
+      }
+    },
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "path"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "llm",
+              "cv",
+              "nlp"
+            ]
+          },
+          "precision": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object"
+          },
+          "dir": {
+            "type": "string",
+            "description": "optional model directory (MNN LLM legacy dir) holding path's config + weights; synced as a dir on adb"
+          }
+        }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "properties": {
+        "threads": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "rounds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "prompt_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "gen_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "batch": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "methodology": {
+      "type": "object",
+      "properties": {
+        "env_control": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "none"
+          ],
+          "description": "Environment-control master switch; 'none' skips governor, CPU pinning and frequency locking."
+        },
+        "cpu_pin": {
+          "type": "boolean",
+          "default": true,
+          "description": "Bind the measurement to a CPU set via taskset (default true). Failure aborts the run."
+        },
+        "pin_cpus": {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Range or CSV list, e.g. \"4-7\" or \"4,5,6,7\"."
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Explicit CPU set; null = auto-detect from the thread count, preferring whole cpufreq clusters."
+        },
+        "lock_freq": {
+          "type": "boolean",
+          "default": true,
+          "description": "Pin the cpufreq policies covering the selected CPUs to the performance governor (default true). Failure degrades to a labelled warning."
+        },
+        "power": {
+          "type": "boolean"
+        },
+        "thermal": {
+          "type": "boolean"
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "description": "Precision-validation instruments (mobench validate). Absent = no validation capability; a declared section must name at least one instrument.",
+      "properties": {
+        "prompts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "Prompt files for the greedy instrument (token-stream comparison over the single-token decode path)."
+        },
+        "gen_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ppl": {
+          "type": "object",
+          "required": [
+            "dataset"
+          ],
+          "properties": {
+            "dataset": {
+              "type": "string",
+              "description": "Text corpus for llama-perplexity."
+            },
+            "ctx": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "chunks": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    "results_dir": {
+      "type": "string",
+      "default": "results"
+    }
+  }
+}

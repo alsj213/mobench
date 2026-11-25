@@ -1,0 +1,41 @@
+# 模板 — MNN · qwen3-0.6b 官方 int4 长序列公平档（p512/g512 · t4 · r5）
+# 官方 llmexport int4（Qwen3-0.6B-MNN-official）；与 q4k-m 档对比精度差异。
+engine: mnn
+
+platform:
+  type: adb
+  adb: "<ADB_EXE>"                    # Windows adb.exe（WSL 经 interop/UNC wrapper）
+  device_id: "<DEVICE_ID>"
+
+build:
+  bin_dir: "<FORK_BIN_DIR>"
+  bench_bin: llm_bench
+  source_dir: "<FORK_DIR>"
+
+workload:
+  threads: [4]
+  rounds: 5
+  prompt_tokens: 512
+  gen_tokens: 512
+
+mnn:
+  backend: cpu
+
+models:
+  - id: qwen3-0.6b-int4-official
+    path: "<MODELS_DIR>/Qwen3-0.6B-MNN-official/config.json"
+    dir: "<MODELS_DIR>/Qwen3-0.6B-MNN-official"
+    kind: llm
+    precision: int4
+
+methodology:
+  # 绑核 + 锁频默认启用（cpu_pin: true / lock_freq: true），无需显式声明：
+  #   - 绑核：按线程数选核，优先整簇（1+3+4 上 N=4 → cpu4-7）；taskset 十六进制掩码
+  #   - 锁频：把所选核所属 cpufreq policy 锁到 performance，测量结束后恢复
+  #   - 无 cpufreq 的环境（如 WSL2）自动降级为不绑核并打标，不中止测量
+  # 关闭：cpu_pin: false / lock_freq: false；env_control: none 一次全关
+  # 显式指定核集合（跳过自动探测）：pin_cpus: "4-7"
+  env_control: auto
+  thermal: true
+
+results_dir: results/mnn-official-p512g512

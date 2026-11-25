@@ -1,0 +1,217 @@
+"""End-to-end run pipeline tests with a fake llama-bench (benchmark-core 执行流水线)."""
+import json
+
+import pytest
+
+from mobench.cli import main as cli_main
+from mobench.config import load_config
+from mobench.platform import host as host_mod
+from mobench.run import RunError, run_pipeline
+
+
+def fake_llama_bench(path):
+    """Write a fake llama-bench that emits llama-bench-style JSON."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys, json\n"
+        "print(json.dumps({'build':'fake','results':[\n"
+        "  {'n_prompt':64,'n_gen':128,'t_prompt_processing':3.2,'t_generation':21.0}]}))\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
+def setup_project(tmp_path):
+    fake_llama_bench(tmp_path / "bin" / "llama-bench")
+    (tmp_path / "models").mkdir(parents=True)
+    model = tmp_path / "models" / "tinyllama.gguf"
+    model.write_bytes(b"GGUF" * 64)
+    cfg = tmp_path / "mobench.yml"
+    cfg.write_text(
+        "engine: llamacpp\n"
+        "platform:\n  type: host\n"
+        "build:\n  bin_dir: bin\n  bench_bin: llama-bench\n"
+        "models:\n  - id: tinyllama\n    path: models/tinyllama.gguf\n"
+        "    kind: llm\n    precision: q8_0\n"
+        "workload:\n  threads: [4]\n  rounds: 2\n"
+        "results_dir: results\n",
+        encoding="utf-8",
+    )
+    return model, str(cfg)
+
+
+def test_run_produces_traceable_records(tmp_path, monkeypatch):
+    # Arrange
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+
+    # Act
+    meta = run_pipeline(load_config(cfg_path))
+
+    # Assert: 2 rounds -> 3 metrics per round
+    assert meta["n_records"] == 2 * 3
+    recs = [json.loads(line) for line in open(meta["records"], encoding="utf-8")]
+    assert all(rec["source_log"] and __import__("os").path.exists(rec["source_log"])
+               for rec in recs)
+    assert all(rec["engine"] == "llamacpp" for rec in recs)
+    # raw logs written and non-empty
+    raw_logs = list((tmp_path / "results").glob("run_*/raw_*.log"))
+    assert len(raw_logs) == 2
+    assert all(log.stat().st_size > 0 for log in raw_logs)
+
+
+def test_run_cli_json_ok(tmp_path, monkeypatch):
+    # Arrange
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+
+    # Act
+    code = cli_main(["run", "--config", cfg_path, "--json"])
+
+    # Assert
+    assert code == 0
+
+
+def test_run_aborts_when_model_missing(tmp_path, monkeypatch):
+    # Arrange
+    monkeypatch.chdir(tmp_path)
+    fake_llama_bench(tmp_path / "bin" / "llama-bench")
+    cfg = tmp_path / "mobench.yml"
+    cfg.write_text(
+        "engine: llamacpp\n"
+        "build:\n  bin_dir: bin\n  bench_bin: llama-bench\n"
+        "models:\n  - id: ghost\n    path: models/ghost.gguf\n    kind: llm\n",
+        encoding="utf-8",
+    )
+
+    # Act / Assert
+    with pytest.raises(RunError) as ei:
+        run_pipeline(load_config(str(cfg)))
+    assert "model" in str(ei.value)
+
+
+# -- 测量条件接入流水线（add-cpu-pin-lockfreq） ---------------------------
+
+
+def _fake_sysfs(root):
+    """A 1+3+4 cluster layout, so the default档 selects cpu4-7 at 4 threads."""
+    for name, cpus, freq in (("policy0", [0, 1, 2, 3], 1804800),
+                             ("policy4", [4, 5, 6], 2419200),
+                             ("policy7", [7], 2841600)):
+        d = root / "cpufreq" / name
+        d.mkdir(parents=True)
+        (d / "related_cpus").write_text(
+            " ".join(str(c) for c in cpus) + "\n", encoding="utf-8")
+        (d / "cpuinfo_max_freq").write_text(f"{freq}\n", encoding="utf-8")
+        (d / "scaling_governor").write_text("schedutil\n", encoding="utf-8")
+    return root
+
+
+def test_run_records_measurement_condition(tmp_path, monkeypatch):
+    """控制状态进入 run.json 与每条 record 的 device 字段（R3 可溯源）。"""
+    # Arrange
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+    monkeypatch.setattr(host_mod, "_SYSFS_CPU",
+                        str(_fake_sysfs(tmp_path / "sysfs")))
+    monkeypatch.setattr(host_mod.os, "geteuid", lambda: 1000)  # 无 root
+
+    # Act
+    meta = run_pipeline(load_config(cfg_path))
+
+    # Assert
+    cond = meta["measurement_conditions"]["t4"]
+    assert cond["pin"]["cpus"] == [4, 5, 6, 7]
+    assert cond["pin"]["mask"] == "f0"
+    assert cond["freq"]["locked"] is False          # degraded, not fabricated
+    recs = [json.loads(line) for line in open(meta["records"], encoding="utf-8")]
+    assert recs
+    assert all(r["device"]["pin"]["cpus"] == [4, 5, 6, 7] for r in recs)
+    assert all(r["device"]["freq"]["locked"] is False for r in recs)
+
+
+def test_run_degrades_without_cpufreq_without_aborting(tmp_path, monkeypatch):
+    """无 cpufreq 环境（WSL2 等）默认档位降级不绑核，测量照常完成（D4）。"""
+    # Arrange
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+    monkeypatch.setattr(host_mod, "_SYSFS_CPU", str(tmp_path / "no-sysfs"))
+    monkeypatch.setattr(host_mod.os, "geteuid", lambda: 1000)
+
+    # Act
+    meta = run_pipeline(load_config(cfg_path))
+
+    # Assert
+    cond = meta["measurement_conditions"]["t4"]
+    assert cond["pin"]["origin"] == "unavailable"
+    assert cond["pin"]["cpus"] == []
+    assert meta["n_records"] == 2 * 3
+
+
+# -- cooldown 门与每轮档位记录（add-thermal-band-monitor） -------------------
+
+
+class _FakeBandPlatform:
+    """sample_thermal 序列喂料（cooldown 逻辑测试用）。"""
+
+    def __init__(self, temps):
+        self._temps = list(temps)
+
+    def sample_thermal(self):
+        t = self._temps.pop(0) if self._temps else 999.0
+        return {"temp_c": {"value": t}, "cpu_freq": {"value_mhz": None}}
+
+
+def test_cooldown_waits_until_below_target():
+    from mobench.run import _cooldown_wait
+
+    # Arrange: 52 → 47 → 41（阈值 45）
+    platform = _FakeBandPlatform([52.0, 47.0, 41.0])
+    slept = []
+
+    # Act
+    res = _cooldown_wait(platform, {"cooldown_c": 45, "cooldown_max_s": 600},
+                         lambda *a: None, sleep=slept.append)
+
+    # Assert
+    assert res["reached"] is True
+    assert res["waited_s"] == 60
+    assert slept == [30, 30]
+    assert res["temp_c"] == 41.0
+
+
+def test_cooldown_gives_up_after_max_without_raising():
+    from mobench.run import _cooldown_wait
+
+    platform = _FakeBandPlatform([52.0] * 10)
+    res = _cooldown_wait(platform, {"cooldown_c": 45, "cooldown_max_s": 60},
+                         lambda *a: None, sleep=lambda s: None)
+    assert res["reached"] is False
+    assert res["waited_s"] == 60
+
+
+def test_cooldown_noop_when_not_configured():
+    from mobench.run import _cooldown_wait
+
+    platform = _FakeBandPlatform([60.0])
+    assert _cooldown_wait(platform, {}, lambda *a: None,
+                          sleep=lambda s: None) is None
+
+
+def test_run_records_per_round_band(tmp_path, monkeypatch):
+    """每轮 device 段携带实时采样（temp_zone/cpu_freq_mhz 字段在位）。"""
+    # Arrange
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+
+    # Act
+    meta = run_pipeline(load_config(cfg_path))
+
+    # Assert
+    recs = [json.loads(line) for line in open(meta["records"], encoding="utf-8")]
+    assert recs
+    assert all("temp_zone" in r["device"] for r in recs)
+    assert all("cpu_freq_mhz" in r["device"] for r in recs)
+    assert "temp_c" in meta["platform"]
+    assert "cpu_freq" in meta["platform"]

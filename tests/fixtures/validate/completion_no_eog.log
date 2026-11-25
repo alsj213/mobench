@@ -1,0 +1,15 @@
+build: 7165 (ab86af2df)
+main: llama backend init
+llama_context: n_threads     = 4
+sampler seed: 555000111
+sampler chain: logits -> penalties -> top_k -> top_p -> min_p -> temp_ext -> dist
+generate: n_ctx = 8192, n_batch = 2048, n_predict = 16, n_keep = 0
+Line one.
+Line two.
+
+common_perf_print:    sampling time =       3.02 ms
+common_perf_print:    samplers time =       0.10 ms /    16 tokens
+common_perf_print:        load time =     428.90 ms
+common_perf_print: prompt eval time =      22.14 ms /   512 tokens (    0.04 ms per token, 23124.66 tokens per second)
+common_perf_print:        eval time =     341.20 ms /    16 runs   (   21.32 ms per token,    46.90 tokens per second)
+common_perf_print:       total time =     794.36 ms /   528 tokens

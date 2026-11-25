@@ -1,0 +1,15 @@
+load_backend: loaded CPU backend from libggml-cpu.so
+llama_model_loader: loaded meta data with 29 key-value pairs and 291 tensors from ../Qwen3-0.6B-Q4_K_M.gguf (version GGUF V3 (latest))
+print_info: model type	= 0.6B
+print_info: file type   = Q4_K - Medium
+llama_context: n_ctx         = 1024
+llama_context: n_batch       = 2048
+llama_context: n_threads     = 4
+llama_perplexity: calculating perplexity over 8 chunks, n_ctx=1024, batch_size=2048, n_seq=1
+llama_perplexity: [1]4.2893,[2]3.8775,[3]3.9728,[4]4.1029,[5]4.3733,[6]4.0341,[7]4.2390,[8]3.9831,
+llama_perplexity: 8 chunks, 8 used, 8192 tokens
+Final estimate: PPL = 1.0086 +/- 0.05123
+llama_perf_context_print:        load time =     431.22 ms
+llama_perf_context_print: prompt eval time =   25461.31 ms /  8192 tokens (    3.11 ms per token,   321.74 tokens per second)
+llama_perf_context_print:        eval time =       0.00 ms /     0 runs   (    0.00 ms per token,      inf tokens per second)
+llama_perf_context_print:       total time =   25461.31 ms /  8192 tokens

@@ -1,0 +1,11 @@
+{
+  "name": "mobench",
+  "description": "mobench 通用推理引擎基准测试核心 Claude Code 插件",
+  "version": "0.9.0",
+  "author": {
+    "name": "alsj213"
+  },
+  "repository": "https://github.com/alsj213/mobench",
+  "license": "MIT",
+  "keywords": ["benchmark", "inference", "llamacpp", "llama.cpp", "mnn", "android", "mobench"]
+}

@@ -1,0 +1,46 @@
+{
+  "name": "mobench",
+  "version": "0.9.0",
+  "description": "Generic inference-engine benchmarking core & Claude Code plugin (llama.cpp / MNN) with traceable records, reports, validation, and analysis",
+  "author": "alsj213",
+  "license": "MIT",
+  "homepage": "https://github.com/alsj213/mobench#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alsj213/mobench.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alsj213/mobench/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "plugin",
+    "benchmark",
+    "inference",
+    "llamacpp",
+    "llama.cpp",
+    "mnn",
+    "android",
+    "mobench"
+  ],
+  "claude": {
+    "type": "plugin",
+    "skills": [
+      "skills/*/SKILL.md"
+    ],
+    "agents": [
+      "agents/*.md"
+    ],
+    "rules": [
+      "rules/*.md"
+    ]
+  },
+  "files": [
+    "mobench/",
+    "skills/",
+    "agents/",
+    "rules/",
+    "scripts/",
+    "schema/"
+  ]
+}

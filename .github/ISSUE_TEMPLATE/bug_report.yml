@@ -1,0 +1,39 @@
+name: Bug 报告
+description: 报告 mobench CLI、适配器、平台控制或分析模块中的问题
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 清晰简洁地描述遇到的现象和预期行为。
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 给出运行的 mobench 命令与最小化脱敏配置（请移除本机路径与设备序列号）。
+      placeholder: |
+        1. 配置 mobench.yml ...
+        2. 运行 `mobench run --config ...`
+        3. 出现报错 ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 错误日志与输出
+      render: shell
+  - type: textarea
+    id: env
+    attributes:
+      label: 环境信息
+      placeholder: |
+        - mobench 版本：
+        - Python 版本：
+        - 平台（host Linux / Android adb）：
+        - 引擎与版本（llama.cpp / MNN / 其他）：
+    validations:
+      required: true

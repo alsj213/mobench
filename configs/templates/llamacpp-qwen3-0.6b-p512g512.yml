@@ -1,0 +1,59 @@
+# 模板 — llama.cpp · qwen3-0.6b 长序列公平对比档（p512/g512 · t4 · r5）
+# 与 mnn-qwen3-0.6b-q4k-m-p512g512.yml 严格同模型同源权重、同 workload，真机对比用。
+# 用法: 替换 <占位符> 另存到 configs/local/ 后
+#   cd <mobile-bench> && python3 -m mobench run --config configs/local/<档>.yml
+# 被测产物: llama.cpp fork NDK 现编（arm64 llama-bench + lib*.so）
+#
+# ⚠ 构建必需带 dotprod —— 缺了会让 repack 分块路径与 sdot 内核在编译期被禁用，
+#   实测 prefill ×2.94 / decode ×1.29（×2 级）的性能损失，且外观上像是"算法形态劣势"。
+#   证据链与复现见 docs/compare-llamacpp-dotprod-vs-baseline-20260910.md
+#   构建：
+#     cmake -S <FORK_DIR> -B <FORK_BIN_DIR>/.. -G Ninja \
+#       -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
+#       -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 \
+#       -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON \
+#       -DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod -DGGML_OPENMP=ON -DGGML_CPU_REPACK=ON
+#     cmake --build <build-dir> --target llama-bench -j8
+#   自检（输出应为正数；0 = 走了无 sdot 的降级路径，须重编）：
+#     $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump -d \
+#       <FORK_BIN_DIR>/libggml-cpu.so | grep -cw sdot
+#   运行时自检（应出现 CPU_REPACK 与 q4_K_8x4）：
+#     ./llama-bench -m <model> -p 8 -n 8 -t 4 -r 1 -v 2>&1 | grep -i repack
+engine: llamacpp
+
+platform:
+  type: adb
+  adb: "<ADB_EXE>"                    # E 盘 Windows adb.exe 需经 UNC/盘符 wrapper（如被测仓 tools/adb-eunc-wrapper.sh）
+  device_id: "<DEVICE_ID>"            # 真机（如小米10 / M2007J3SC）
+
+build:
+  bin_dir: "<FORK_BIN_DIR>"           # NDK 产物目录（整目录推送）
+  bench_bin: llama-bench
+  source_dir: "<FORK_DIR>"            # 被测 llama.cpp fork（git commit 溯源）
+  # 必需编译参数（ARM64 真机）。mobench 不消费此字段，仅作文档与构建自检依据；
+  # 缺 dotprod ⇒ ggml_cpu_has_dotprod() 被常量折叠为 0 ⇒ repack(q4_K_8x4) 全落空 + sdot 未编译。
+  required_cmake_args: "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod"
+
+workload:
+  threads: [4]                        # 固定 4 线程
+  rounds: 5                           # 正式统计 ≥5
+  prompt_tokens: 512                  # -p 长 prompt（prefill 侧重）
+  gen_tokens: 512                     # -n 长生成（decode 有统计意义）
+
+models:
+  - id: qwen3-0.6b-q4_k_m
+    path: "<MODELS_DIR>/Qwen3-0.6B-Q4_K_M.gguf"
+    kind: llm
+    precision: q4_k_m
+
+methodology:
+  # 绑核 + 锁频默认启用（cpu_pin: true / lock_freq: true），无需显式声明：
+  #   - 绑核：按线程数选核，优先整簇（1+3+4 上 N=4 → cpu4-7）；taskset 十六进制掩码
+  #   - 锁频：把所选核所属 cpufreq policy 锁到 performance，测量结束后恢复
+  #   - 无 cpufreq 的环境（如 WSL2）自动降级为不绑核并打标，不中止测量
+  # 关闭：cpu_pin: false / lock_freq: false；env_control: none 一次全关
+  # 显式指定核集合（跳过自动探测）：pin_cpus: "4-7"
+  env_control: auto
+  thermal: true
+
+results_dir: results/llamacpp-p512g512   # 相对运行 cwd（<mobile-bench>）；已在 .gitignore 忽略

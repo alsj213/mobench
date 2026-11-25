@@ -1,0 +1,27 @@
+# MNN benchmark.out 配置示例（CV/NLP，目录式测速）
+# 用法：复制到工作目录（或用 --config 指向本文件），按注释改路径。
+engine: mnn
+
+platform:
+  type: host            # host | adb
+  # adb 时：type: adb + adb: <path> + device_id: <serial>（bin_dir 为本地 Android 产物）
+
+build:
+  bin_dir: ./build            # MNN 产物目录（含 benchmark.out；adb 时含配套 libMNN.so）
+  bench_bin: benchmark.out
+  source_dir: .               # MNN 源码根（git commit 溯源）
+
+workload:
+  threads: [8]
+  rounds: 5                   # 正式 ≥5；快速试跑改 1
+
+models:
+  # benchmark.out 以「模型目录」为参数并会遍历目录内全部 .mnn，
+  # 因此 dir 目录里只放这一个被测模型。
+  - id: squeezenet
+    path: ./models/squeezenetv1.1.mnn
+    dir:  ./models/squeezenetv1.1
+    kind: cv
+    precision: low
+
+results_dir: results

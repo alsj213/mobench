@@ -1,0 +1,29 @@
+# MNN llm_bench 配置示例（LLM，目录模型）
+# 用法：复制到工作目录（或用 --config 指向本文件），按注释改路径。
+engine: mnn
+
+platform:
+  type: host            # host | adb
+  # adb 时（被测为 Android MNN 产物）：type: adb + adb: <path> + device_id: <serial>
+
+build:
+  bin_dir: ./build            # MNN 产物目录（含 llm_bench；adb 时含配套 libMNN/libllm 等动态库）
+  bench_bin: llm_bench
+  source_dir: .               # MNN 源码根（git commit 溯源）
+
+workload:
+  threads: [8]
+  rounds: 5                   # 正式 ≥5；快速试跑改 1
+  prompt_tokens: 128          # -p
+  gen_tokens: 128             # -n
+
+models:
+  # MNN LLM 是目录模型：path 指向目录内 config.json，dir 指向整个模型目录
+  # （含 config.json / llm.mnn / llm.mnn.weight / tokenizer.*）
+  - id: my-llm
+    path: ./models/my-llm/config.json
+    dir:  ./models/my-llm
+    kind: llm
+    precision: low            # 与 -c 精度对应，仅作记录
+
+results_dir: results

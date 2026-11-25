@@ -1,0 +1,18 @@
+{
+  "name": "mobench",
+  "description": "通用推理引擎基准测试 Claude Code 插件（llama.cpp / MNN 及已注册适配器，host / adb 双平台）",
+  "owner": {
+    "name": "alsj213"
+  },
+  "plugins": [
+    {
+      "name": "mobench",
+      "description": "mobench 通用引擎基准测试核心：可溯源 records / 报告 / 统计 / 回归 / 精度校验 / 功耗与性能剖析",
+      "version": "0.9.0",
+      "source": "./",
+      "author": {
+        "name": "alsj213"
+      }
+    }
+  ]
+}

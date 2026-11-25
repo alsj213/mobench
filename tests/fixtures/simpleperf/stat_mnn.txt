@@ -1,0 +1,18 @@
+| model                          |  modelSize | backend    | threads | precision  | flashAttention | test          |        t/s |
+| ------------------------------ | ---------: | ---------- | ----: | ---------- | -------------- | ------------- | ---------: |
+| Qwen3-0.6B-MNN-q4k-m           | 575.15 MiB | CPU        |     4 | Low        | off            | pp16          | 189.49 ± 0.39 |
+| Qwen3-0.6B-MNN-q4k-m           | 575.15 MiB | CPU        |     4 | Low        | off            | tg64          | 40.30 ± 0.09 |
+
+simpleperf W cmd_stat.cpp:865] Percentages < 100% means some events only run a subset of enabled time,
+probably caused by hardware counter multiplexing (less counters than events).
+Try --use-devfreq-counters if on a rooted device.
+Performance counter statistics:
+
+#          count  event_name              # count / runtime,  runtime / enabled_time
+  67,436,851,772  cpu-cycles              # 2.393047 GHz   (60%)
+  67,273,342,838  instructions            # 2.388 G/sec    (60%)
+     793,016,830  cache-misses            # 28.154 M/sec   (60%)
+  21,530,788,107  cache-references        # 764.164 M/sec  (60%)
+     791,312,649  L1-dcache-load-misses   # 28.075 M/sec   (60%)
+
+Total test time: 14.435254 seconds.

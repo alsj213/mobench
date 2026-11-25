@@ -1,0 +1,835 @@
+Cmdline: /system/bin/simpleperf record -f 2000 -o /data/local/tmp/mobench/p.data -g -- ./llm_bench -m /data/local/tmp/mobench/models/Qwen3-0.6B-MNN-q4k-m/config.json -a cpu -c 2 -t 4 -fa 0 -p 16 -n 32
+Arch: arm64
+Event: cpu-cycles (type 0, config 0)
+Samples: 69515
+Event count: 75953538782
+
+Overhead  Symbol
+26.34%    [kernel.kallsyms][+ffffffa4547a7ae4]
+17.39%    L8LoopSz_TILE_1
+15.17%    L8LoopSz_TILE_1_lu8
+7.93%     L8Tile1Quan
+4.71%     void* std::__ndk1::__thread_proxy[abi:v170000]<std::__ndk1::tuple<std::__ndk1::unique_ptr<std::__ndk1::__thread_struct, std::__ndk1::default_delete<std::__ndk1::__thread_struct> >, MNN::ThreadPool::ThreadPool(int)::$_0> >(void*)
+3.04%     MNN::IDSTDecoder::ReadQuanData_c(MNN::BaseLoader*, unsigned long*, MNN::ConvolutionCommon::Int8Common*, MNN::IDSTQuan const*, bool, bool, void*)
+1.94%     L8LoopSz_TILE_12
+1.60%     sched_yield
+1.45%     MNN::ThreadPool::enqueueInternal(std::__ndk1::pair<std::__ndk1::function<void (int)>, int>*, int)
+1.10%     [kernel.kallsyms][+ffffffa453299d40]
+1.07%     [kernel.kallsyms][+ffffffa454786690]
+1.06%     TILE1_ADD_DSTV
+0.84%     L8LoopSz_TILE_4
+0.83%     __memcpy
+0.66%     TILE1_BLOCKNUM
+0.58%     [kernel.kallsyms][+ffffffa453445bd8]
+0.51%     MNNReorderWeightInt4Arm82(unsigned char*, unsigned char const*, int*, unsigned long, float*)
+0.49%     @plt
+0.47%     L8Tile12Quan
+0.36%     MNN::DenseConvInt8TiledExecutor::DenseConvInt8TiledExecutor(MNN::Backend*, MNN::Op const*, std::__ndk1::shared_ptr<MNN::ConvolutionCommon::Int8Common>, bool, std::__ndk1::function<void (bool, std::__ndk1::shared_ptr<MNN::CPUConvolution::ResourceInt8> const&, MNN::DenseConvInt8TiledExecutor::WeightReorderInfo const&)>)::$_0::operator()(MNN::MatmulRelatedFunctions, std::__ndk1::vector<int, std::__ndk1::allocator<int> >, int, int, int, int, int, int, int, bool, signed char**, void (*)(float*, signed char*, unsigned long, unsigned long, unsigned long, unsigned long)) const
+0.34%     MNN::ConvInt8TiledExecutor::reorderWeight(unsigned char*, unsigned char const*, int*, int, float*, void (*)(float*, signed char*, unsigned long, unsigned long, unsigned long, unsigned long))
+0.32%     TILE1_POST
+0.32%     TILE12_ADD_DSTV
+0.30%     [kernel.kallsyms][+ffffffa453443fa8]
+0.29%     [kernel.kallsyms][+ffffffa4547a7a9c]
+0.28%     [kernel.kallsyms][+ffffffa453482434]
+0.26%     [kernel.kallsyms][+ffffffa4534808e0]
+0.23%     TILE1_L8_MLA_TERM
+0.23%     [kernel.kallsyms][+ffffffa453480e4c]
+0.23%     void MNN::_Arm82MNNPackC4ForMatMul_A<12, 4>(signed char*, signed char const**, int const*, int const*)
+0.23%     [kernel.kallsyms][+ffffffa454786f60]
+0.22%     std::__ndk1::basic_istream<char, std::__ndk1::char_traits<char> >& std::__ndk1::getline[abi:v170000]<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >(std::__ndk1::basic_istream<char, std::__ndk1::char_traits<char> >&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >&, char)
+0.20%     E1LoopL
+0.20%     TILE1_L8_ACCUM_BUFFER
+0.19%     BIAS_L16
+0.18%     std::__ndk1::__function::__func<MNN::DenseConvInt8TiledExecutor::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_3::operator()(int) const::'lambda'(int), std::__ndk1::allocator<MNN::DenseConvInt8TiledExecutor::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_3::operator()(int) const::'lambda'(int)>, void (int)>::operator()(int&&)
+0.16%     memcpy
+0.16%     LU4
+0.15%     [kernel.kallsyms][+ffffffa453480e64]
+0.14%     std::__ndk1::pair<std::__ndk1::__hash_iterator<std::__ndk1::__hash_node<std::__ndk1::__hash_value_type<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, int>, void*>*>, bool> std::__ndk1::__hash_table<std::__ndk1::__hash_value_type<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, int>, std::__ndk1::__unordered_map_hasher<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::__hash_value_type<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, int>, std::__ndk1::hash<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > >, std::__ndk1::equal_to<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > >, true>, std::__ndk1::__unordered_map_equal<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::__hash_value_type<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, int>, std::__ndk1::equal_to<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > >, std::__ndk1::hash<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > >, true>, std::__ndk1::allocator<std::__ndk1::__hash_value_type<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, int> > >::__emplace_unique_key_args<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >&, int&>(std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >&, int&)
+0.14%     [kernel.kallsyms][+ffffffa453283654]
+0.14%     std::__ndk1::pair<std::__ndk1::__hash_iterator<std::__ndk1::__hash_node<std::__ndk1::__hash_value_type<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, int>, void*>*>, bool> std::__ndk1::__hash_table<std::__ndk1::__hash_value_type<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, int>, std::__ndk1::__unordered_map_hasher<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, std::__ndk1::__hash_value_type<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, int>, MNN::Transformer::HuggingfaceTokenizer::hash_pair_wstring, std::__ndk1::equal_to<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > > >, true>, std::__ndk1::__unordered_map_equal<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, std::__ndk1::__hash_value_type<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, int>, std::__ndk1::equal_to<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > > >, MNN::Transformer::HuggingfaceTokenizer::hash_pair_wstring, true>, std::__ndk1::allocator<std::__ndk1::__hash_value_type<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, int> > >::__emplace_unique_key_args<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, int&>(std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > > const&, std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >&&, int&)
+0.14%     MNNExp
+0.14%     MNNNorm
+0.14%     L8Tile4Quan
+0.14%     MNN::Pipeline::execute()
+0.13%     MNN::Transformer::Sampler::stepTopK(MNN::Transformer::SamplerState&)
+0.12%     TILE4_ADD_DSTV
+0.12%     memset
+0.12%     MNNDequantizeFP16(short const*, float*, unsigned long)
+0.12%     [kernel.kallsyms][+ffffffa4532814a4]
+0.12%     E1LoopH8
+0.11%     MNN::MNNUnpackTransposeInt16C8(short*, short const*, unsigned long, unsigned long, int*)
+0.10%     TILE12_L8_ACCUM_BUFFER
+0.09%     void MNN::CPUKVCacheManager::ProcessValue<decimal16>(MNN::Tensor const*, int, int)
+0.09%     TILE12_L8_MLA_TERM
+0.09%     je_free
+0.09%     [kernel.kallsyms][+ffffffa4547a7928]
+0.09%     __kernel_clock_gettime
+0.09%     LU8
+0.08%     [kernel.kallsyms][+ffffffa4532836f4]
+0.08%     MNN::DenseConvInt8TiledExecutor::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)
+0.08%     Loop4
+0.08%     MNN::CPUAttention::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_2::operator()(int) const::'lambda'(int, int, int, signed char*, signed char*)::operator()(int, int, int, signed char*, signed char*) const
+0.08%     MNN::Transformer::DiskEmbedding::DiskEmbedding(std::__ndk1::shared_ptr<MNN::Transformer::LlmConfig> const&, std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, int, std::__ndk1::vector<long, std::__ndk1::allocator<long> >)
+0.08%     MNNSiLuLowp
+0.08%     [kernel.kallsyms][+ffffffa45348ac6c]
+0.08%     [kernel.kallsyms][+ffffffa4534adac0]
+0.07%     void MNN::CPUKVCacheManager::ProcessKey<decimal16>(MNN::Tensor const*, int, int)
+0.07%     MNN::MNNAttenPackAndScaleSingleHead(float*, float const*, unsigned long, float const*, int const*, unsigned long, unsigned long)
+0.06%     je_malloc
+0.06%     [kernel.kallsyms][+ffffffa45343a664]
+0.06%     MNN::Transformer::HuggingfaceTokenizer::~HuggingfaceTokenizer()
+0.06%     [kernel.kallsyms][+ffffffa4534b0304]
+0.06%     [kernel.kallsyms][+ffffffa453282bb4]
+0.06%     MNN::MNNSoftmaxFp16(float*, float const*, float*, float*, float*, int, int, int, int, int, bool)
+0.06%     TILE1_CVT_FP16
+0.06%     [kernel.kallsyms][+ffffffa45348ea24]
+0.05%     [kernel.kallsyms][+ffffffa454786f44]
+0.05%     je_tcache_bin_flush_small
+0.05%     TILE12_BLOCKNUM
+0.05%     std::__ndk1::__function::__func<MNN::CPULayerNorm::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_1, std::__ndk1::allocator<MNN::CPULayerNorm::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_1>, void (int)>::operator()(int&&)
+0.05%     [kernel.kallsyms][+ffffffa453443fb8]
+0.05%     pthread_mutex_unlock
+0.05%     MNN::CPUBackend::getBytes(MNN::Backend const*, MNN::Tensor const*)
+0.04%     End
+0.04%     pthread_mutex_trylock
+0.04%     [kernel.kallsyms][+ffffffa4534528a4]
+0.04%     std::__ndk1::__function::__func<MNN::CPUAttention::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_2, std::__ndk1::allocator<MNN::CPUAttention::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_2>, void (int)>::operator()(int&&)
+0.04%     [linker]elf64_sym const* soinfo_do_lookup_impl<false>(char const*, version_info const*, soinfo**, SymbolLookupList const&)
+0.04%     [kernel.kallsyms][+ffffffa454786f70]
+0.04%     MNN::EagerBufferAllocator::getFromFreeList(std::__ndk1::multimap<unsigned long, MNN::SharedPtr<MNN::EagerBufferAllocator::Node>, std::__ndk1::less<unsigned long>, std::__ndk1::allocator<std::__ndk1::pair<unsigned long const, MNN::SharedPtr<MNN::EagerBufferAllocator::Node> > > >*, unsigned long, bool, unsigned long)
+0.04%     MNN::CPUAttention::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)
+0.04%     [kernel.kallsyms][+ffffffa45478668c]
+0.04%     MNN::CPULoop::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::'lambda'(int, int)::operator()(int, int) const
+0.04%     je_arena_tcache_fill_small
+0.03%     void MNN::Arm82Binary<MNN::VecBinaryMul>(void*, void const*, void const*, int, int)
+0.03%     std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >::push_back(wchar_t)
+0.03%     std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >::push_back(char)
+0.03%     [kernel.kallsyms][+ffffffa4547a7bfc]
+0.03%     [kernel.kallsyms][+ffffffa45348feec]
+0.03%     [kernel.kallsyms][+ffffffa4534b0260]
+0.03%     MNN::CPULayerNorm::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)
+0.03%     [kernel.kallsyms][+ffffffa4533038bc]
+0.03%     MNN::MNNPackTransposeInt16C8(short*, short const*, unsigned long, unsigned long, int*)
+0.03%     MNN::ThreadPool::enqueue(std::__ndk1::pair<std::__ndk1::function<void (int)>, int>*, int)
+0.03%     E1LoopLR
+0.03%     FLLoop28
+0.03%     MNN::TensorUtils::getDescribe(MNN::Tensor const*)
+0.03%     [kernel.kallsyms][+ffffffa454786f80]
+0.03%     [kernel.kallsyms][+ffffffa4533038a0]
+0.03%     [kernel.kallsyms][+ffffffa4534adab8]
+0.03%     [kernel.kallsyms][+ffffffa454786f90]
+0.03%     [kernel.kallsyms][+ffffffa4547a7d24]
+0.03%     [kernel.kallsyms][+ffffffa453299dbc]
+0.02%     [kernel.kallsyms][+ffffffa453483bd8]
+0.02%     pthread_getspecific
+0.02%     [kernel.kallsyms][+ffffffa453453634]
+0.02%     TILE1_PRE_QUAD
+0.02%     void MNN::Arm82Binary<MNN::VecBinaryAdd>(void*, void const*, void const*, int, int)
+0.02%     MNN::DenseConvInt8TiledExecutor::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_0::operator()(unsigned char*, int&, unsigned char*, int, int, int, int, signed char*, unsigned char*, int) const
+0.02%     TILE4_L8_ACCUM_BUFFER
+0.02%     TILE4_BLOCKNUM
+0.02%     [kernel.kallsyms][+ffffffa4533803d4]
+0.02%     [kernel.kallsyms][+ffffffa4534abff8]
+0.02%     [kernel.kallsyms][+ffffffa4547a7aec]
+0.02%     [kernel.kallsyms][+ffffffa4534b00d8]
+0.02%     std::__ndk1::__murmur2_or_cityhash<unsigned long, 64ul>::operator()(void const*, unsigned long)
+0.02%     [kernel.kallsyms][+ffffffa45344a5d8]
+0.02%     TILE16_ROUND
+0.02%     MNNQuantizeFP16(float const*, short*, unsigned long)
+0.02%     [kernel.kallsyms][+ffffffa4534808bc]
+0.02%     [kernel.kallsyms][+ffffffa4534ac040]
+0.02%     [kernel.kallsyms][+ffffffa454786f74]
+0.02%     LoopL2
+0.02%     [kernel.kallsyms][+ffffffa453483d04]
+0.02%     arena_dalloc_bin_locked_impl
+0.02%     [kernel.kallsyms][+ffffffa4533037cc]
+0.02%     MNN::Transformer::utf8_to_wstring(char const*, unsigned long)
+0.02%     [kernel.kallsyms][+ffffffa4534adad0]
+0.02%     [kernel.kallsyms][+ffffffa45334e70c]
+0.02%     [kernel.kallsyms][+ffffffa453299d90]
+0.02%     [kernel.kallsyms][+ffffffa453487d2c]
+0.02%     std::__ndk1::__function::__func<MNN::CPUAttention::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_3, std::__ndk1::allocator<MNN::CPUAttention::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_3>, void (int)>::operator()(int&&)
+0.02%     [kernel.kallsyms][+ffffffa453292914]
+0.02%     [kernel.kallsyms][+ffffffa4534adab4]
+0.02%     [kernel.kallsyms][+ffffffa4534affd0]
+0.02%     [kernel.kallsyms][+ffffffa45348e404]
+0.02%     [kernel.kallsyms][+ffffffa4534808f0]
+0.02%     MNN::EagerBufferAllocator::free(MNN::MemChunk)
+0.02%     [kernel.kallsyms][+ffffffa4534a0364]
+0.02%     __aarch64_ldadd8_relax
+0.02%     MNN::CPULoop::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)
+0.02%     [kernel.kallsyms][+ffffffa4534ac000]
+0.02%     TILE12_CVT_FP16
+0.02%     L8Tile1LoopCheck
+0.02%     malloc
+0.01%     [kernel.kallsyms][+ffffffa4534ac004]
+0.01%     [kernel.kallsyms][+ffffffa4534adabc]
+0.01%     [kernel.kallsyms][+ffffffa45348acac]
+0.01%     [kernel.kallsyms][+ffffffa453452784]
+0.01%     [kernel.kallsyms][+ffffffa4532928e8]
+0.01%     __aarch64_ldadd8_acq_rel
+0.01%     [kernel.kallsyms][+ffffffa45344a53c]
+0.01%     MNN::ConvInt8TiledExecutor::packWeightAndQuantInfo(signed char*, signed char const*, signed char const*, int*, int)
+0.01%     [kernel.kallsyms][+ffffffa45336e528]
+0.01%     TILE1_STORE
+0.01%     TILE4_L8_MLA_TERM
+0.01%     MNN::Transformer::HuggingfaceTokenizer::load_vocab(std::__ndk1::basic_ifstream<char, std::__ndk1::char_traits<char> >&)
+0.01%     [kernel.kallsyms][+ffffffa45334e674]
+0.01%     [linker]calculate_gnu_hash_neon(char const*)
+0.01%     [kernel.kallsyms][+ffffffa453483bdc]
+0.01%     [kernel.kallsyms][+ffffffa45348fef0]
+0.01%     [kernel.kallsyms][+ffffffa45348ac74]
+0.01%     [kernel.kallsyms][+ffffffa453280ee4]
+0.01%     MNN::CPUBinary::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)
+0.01%     void MNN::_Wrap<MNN::_SiLu>(void*, void const*, int)
+0.01%     [kernel.kallsyms][+ffffffa45336e518]
+0.01%     [kernel.kallsyms][+ffffffa453299d84]
+0.01%     [kernel.kallsyms][+ffffffa4534b025c]
+0.01%     [kernel.kallsyms][+ffffffa4533037bc]
+0.01%     [kernel.kallsyms][+ffffffa4534affd4]
+0.01%     MNN::SizeComputer::computeOutputSize(MNN::Op const*, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)
+0.01%     std::__ndk1::__function::__func<MNN::CPUAttention::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_1, std::__ndk1::allocator<MNN::CPUAttention::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_1>, void (int, signed char*)>::operator()(int&&, signed char*&&)
+0.01%     MNN::Express::PipelineModule::load(std::__ndk1::vector<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::allocator<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > > > const&, std::__ndk1::vector<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, std::__ndk1::allocator<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > > > const&, std::__ndk1::shared_ptr<MNN::BufferStorage>, std::__ndk1::shared_ptr<MNN::Express::Executor::RuntimeManager>, MNN::Express::Module::Config const*, std::__ndk1::map<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >, MNN::Express::SubGraph, std::__ndk1::less<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > >, std::__ndk1::allocator<std::__ndk1::pair<std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const, MNN::Express::SubGraph> > >&)
+0.01%     [kernel.kallsyms][+ffffffa4534ac03c]
+0.01%     [kernel.kallsyms][+ffffffa4534ac050]
+0.01%     [kernel.kallsyms][+ffffffa45344a5e4]
+0.01%     TILE12_POST
+0.01%     MNN::EagerBufferAllocator::alloc(unsigned long, bool, unsigned long)
+0.01%     [kernel.kallsyms][+ffffffa4534b0278]
+0.01%     std::__ndk1::__function::__func<MNN::CPURaster::onResize(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_3, std::__ndk1::allocator<MNN::CPURaster::onResize(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_3>, void (int)>::operator()(int&&)
+0.01%     std::__ndk1::__function::__func<MNN::CPULoop::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::'lambda'(int), std::__ndk1::allocator<MNN::CPULoop::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::'lambda'(int)>, void (int)>::operator()(int&&)
+0.01%     [kernel.kallsyms][+ffffffa4534abff4]
+0.01%     [kernel.kallsyms][+ffffffa4547a1468]
+0.01%     [kernel.kallsyms][+ffffffa4547a1474]
+0.01%     [kernel.kallsyms][+ffffffa454786f78]
+0.01%     [kernel.kallsyms][+ffffffa45336e554]
+0.01%     [kernel.kallsyms][+ffffffa45343bd80]
+0.01%     free
+0.01%     [kernel.kallsyms][+ffffffa45349af40]
+0.01%     [kernel.kallsyms][+ffffffa4534a0360]
+0.01%     std::__ndk1::__function::__func<MNN::CPUUnary::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_2, std::__ndk1::allocator<MNN::CPUUnary::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_2>, void (int)>::operator()(int&&)
+0.01%     [kernel.kallsyms][+ffffffa45336e510]
+0.01%     TILE_24
+0.01%     je_extent_avail_remove
+0.01%     MNN::GeometryComputerUtils::shapeComputeAndGeometryTransform(MNN::Runtime const*, MNN::FileLoader*, std::__ndk1::vector<MNN::Schedule::OpCacheInfo, std::__ndk1::allocator<MNN::Schedule::OpCacheInfo> >&, MNN::GeometryComputer::Context&, std::__ndk1::shared_ptr<MNN::Backend>, MNN::Runtime::CompilerType, bool, bool)
+0.01%     [kernel.kallsyms][+ffffffa453eb9258]
+0.01%     LUEnd
+0.01%     std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >::reserve(unsigned long)
+0.01%     [kernel.kallsyms][+ffffffa4532928f8]
+0.01%     [kernel.kallsyms][+ffffffa4547a7918]
+0.01%     MNN::ConvolutionFloatFactory::create(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, MNN::Op const*, MNN::Backend*)
+0.01%     [kernel.kallsyms][+ffffffa453487d30]
+0.01%     [kernel.kallsyms][+ffffffa4534a0330]
+0.01%     [kernel.kallsyms][+ffffffa4534adaa8]
+0.01%     void MNN::FP16VecUnary<MNN::VecNeg>(void*, void const*, int)
+0.01%     [kernel.kallsyms][+ffffffa453445a98]
+0.01%     [kernel.kallsyms][+ffffffa453443cd0]
+0.01%     void std::__ndk1::__tree_remove[abi:v170000]<std::__ndk1::__tree_node_base<void*>*>(std::__ndk1::__tree_node_base<void*>*, std::__ndk1::__tree_node_base<void*>*)
+0.01%     Tile1End
+0.01%     [kernel.kallsyms][+ffffffa4547a137c]
+0.01%     MNN::CPURaster::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)
+0.01%     std::__ndk1::__function::__value_func<void (int)>::swap[abi:v170000](std::__ndk1::__function::__value_func<void (int)>&)
+0.01%     [linker]__strcmp_aarch64
+0.01%     [kernel.kallsyms][+ffffffa45348e390]
+0.01%     [kernel.kallsyms][+ffffffa453484d30]
+0.01%     [kernel.kallsyms][+ffffffa45347af78]
+0.01%     [linker]find_libraries(android_namespace_t*, soinfo*, char const* const*, unsigned long, soinfo**, std::__1::vector<soinfo*, std::__1::allocator<soinfo*> >*, unsigned long, int, android_dlextinfo const*, bool, std::__1::vector<android_namespace_t*, std::__1::allocator<android_namespace_t*> >*)
+0.01%     [kernel.kallsyms][+ffffffa453484854]
+0.01%     std::__ndk1::equal_to<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > > >::operator()[abi:v170000](std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > > const&, std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > > const&) const
+0.01%     [kernel.kallsyms][+ffffffa453484dac]
+0.01%     [kernel.kallsyms][+ffffffa453445acc]
+0.01%     [kernel.kallsyms][+ffffffa454786f88]
+0.01%     [kernel.kallsyms][+ffffffa454786f54]
+0.01%     MNN::Backend::onReleaseBuffer(MNN::Tensor const*, MNN::Backend::StorageType)
+0.01%     MNN::EagerBufferAllocator::returnMemory(std::__ndk1::multimap<unsigned long, MNN::SharedPtr<MNN::EagerBufferAllocator::Node>, std::__ndk1::less<unsigned long>, std::__ndk1::allocator<std::__ndk1::pair<unsigned long const, MNN::SharedPtr<MNN::EagerBufferAllocator::Node> > > >*, MNN::SharedPtr<MNN::EagerBufferAllocator::Node>, bool)
+0.01%     MNN::Session::clone(std::__ndk1::pair<std::__ndk1::map<MNNForwardType, std::__ndk1::shared_ptr<MNN::Runtime>, std::__ndk1::less<MNNForwardType>, std::__ndk1::allocator<std::__ndk1::pair<MNNForwardType const, std::__ndk1::shared_ptr<MNN::Runtime> > > >, std::__ndk1::shared_ptr<MNN::Runtime> >&&, std::__ndk1::shared_ptr<MNN::Schedule::ScheduleInfo>, void*)
+0.01%     [kernel.kallsyms][+ffffffa454786f84]
+0.01%     [kernel.kallsyms][+ffffffa4547a7d18]
+0.01%     [kernel.kallsyms][+ffffffa4532a9274]
+0.01%     [kernel.kallsyms][+ffffffa453446c90]
+0.01%     MNN::Express::StaticModule::StaticModule(std::__ndk1::vector<int, std::__ndk1::allocator<int> >, std::__ndk1::vector<int, std::__ndk1::allocator<int> >, std::__ndk1::vector<std::__ndk1::shared_ptr<MNN::BufferStorage>, std::__ndk1::allocator<std::__ndk1::shared_ptr<MNN::BufferStorage> > >&&, MNN::Schedule::ScheduleInfo&&, std::__ndk1::shared_ptr<MNN::Schedule::ScheduleInfo>, MNN::Session::ModeGroup&&, std::__ndk1::shared_ptr<MNN::Express::Executor::RuntimeManager>, MNN::Express::Module::Config const&)
+0.01%     [kernel.kallsyms][+ffffffa4534adad4]
+0.01%     E4LoopL
+0.01%     MNN::TensorUtils::getDescribeOrigin(MNN::Tensor const*)
+0.01%     MNN::Tensor::Tensor(int, MNN::Tensor::DimensionType)
+0.01%     MNN::Pipeline::allocMemory(bool, bool)
+0.01%     TILE12_STORE
+0.01%     LoopSz_1
+0.01%     [kernel.kallsyms][+ffffffa4532a9130]
+0.01%     TILE2_PRE_QUAD
+0.01%     [kernel.kallsyms][+ffffffa45348cf80]
+0.01%     [kernel.kallsyms][+ffffffa4534adab0]
+0.01%     [kernel.kallsyms][+ffffffa454792e58]
+0.01%     [kernel.kallsyms][+ffffffa45344a5dc]
+0.01%     MNN::CPUBackend::allocBuffer(unsigned long, MNN::Tensor*, MNN::Backend::StorageType)
+0.01%     E4
+0.01%     E1LoopLEnd
+0.01%     MNNGemmInt8AddBiasScale_ARMV82_w4_Unit_FP16
+0.01%     [kernel.kallsyms][+ffffffa4532928ec]
+0.01%     [kernel.kallsyms][+ffffffa45344a5d0]
+0.01%     [kernel.kallsyms][+ffffffa45336c3a4]
+0.01%     extent_recycle
+0.01%     [kernel.kallsyms][+ffffffa45348e3d0]
+0.01%     [kernel.kallsyms][+ffffffa453445a88]
+0.01%     [kernel.kallsyms][+ffffffa453480a00]
+0.01%     [kernel.kallsyms][+ffffffa453482c6c]
+0.01%     [kernel.kallsyms][+ffffffa453445a38]
+0.01%     fread
+0.01%     [kernel.kallsyms][+ffffffa45344a4bc]
+0.01%     [kernel.kallsyms][+ffffffa45336e558]
+0.00%     [kernel.kallsyms][+ffffffa45343a674]
+0.00%     MNN::OpCommonUtils::createExecutionWithExternal(MNN::Backend*, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, MNN::Op const*, MNN::FileLoader*, std::__ndk1::shared_ptr<MNN::BufferStorage>&)
+0.00%     [kernel.kallsyms][+ffffffa4547a7bf0]
+0.00%     MNN::CPUBackend::_resetDynamicMemory() const
+0.00%     [kernel.kallsyms][+ffffffa453eb923c]
+0.00%     __memchr_aarch64
+0.00%     [kernel.kallsyms][+ffffffa4534ac00c]
+0.00%     [kernel.kallsyms][+ffffffa45348fc00]
+0.00%     [kernel.kallsyms][+ffffffa4534ae1ec]
+0.00%     [kernel.kallsyms][+ffffffa45336e55c]
+0.00%     [kernel.kallsyms][+ffffffa454786f64]
+0.00%     [kernel.kallsyms][+ffffffa453484958]
+0.00%     MNN::DenseConvInt8TiledExecutor::DenseConvInt8TiledExecutor(MNN::Backend*, MNN::Op const*, std::__ndk1::shared_ptr<MNN::ConvolutionCommon::Int8Common>, bool, std::__ndk1::function<void (bool, std::__ndk1::shared_ptr<MNN::CPUConvolution::ResourceInt8> const&, MNN::DenseConvInt8TiledExecutor::WeightReorderInfo const&)>)
+0.00%     [kernel.kallsyms][+ffffffa45334e700]
+0.00%     [kernel.kallsyms][+ffffffa453443c3c]
+0.00%     operator new(unsigned long)
+0.00%     extent_try_coalesce
+0.00%     [linker]memcmp
+0.00%     [kernel.kallsyms][+ffffffa4534affc8]
+0.00%     TILE_12
+0.00%     std::__ndk1::__shared_weak_count::__release_weak()
+0.00%     MNN::Express::StaticModule::_resize(std::__ndk1::vector<MNN::Express::VARP, std::__ndk1::allocator<MNN::Express::VARP> > const&)
+0.00%     std::__ndk1::chrono::steady_clock::now()
+0.00%     MNN::CPUUnary::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)
+0.00%     TILE4_CVT_FP16
+0.00%     [kernel.kallsyms][+ffffffa454786f5c]
+0.00%     [kernel.kallsyms][+ffffffa453299d8c]
+0.00%     MNN::CPUKVCacheManager::onUpdateKV(MNN::Tensor const*, MNN::Tensor const*, int)
+0.00%     [linker]bool packed_relocate_impl<(RelocMode)1>(Relocator&, sleb128_decoder)
+0.00%     LoopH
+0.00%     E1
+0.00%     std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >::__shrink_or_extend[abi:v170000](unsigned long)
+0.00%     [kernel.kallsyms][+ffffffa4534affe0]
+0.00%     [kernel.kallsyms][+ffffffa45344a5ec]
+0.00%     [kernel.kallsyms][+ffffffa45374d894]
+0.00%     MNN::Pipeline::Pipeline(std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&, std::__ndk1::pair<MNN::Schedule::BackendCache, std::__ndk1::vector<MNN::Schedule::OpCacheInfo, std::__ndk1::allocator<MNN::Schedule::OpCacheInfo> > >&&, bool, bool, MNN::Pipeline::TuningAttr const&, MNN::Runtime const*, MNN::Runtime const*, int)
+0.00%     [kernel.kallsyms][+ffffffa45348ac84]
+0.00%     MNN::Tensor::~Tensor()
+0.00%     [kernel.kallsyms][+ffffffa453482c8c]
+0.00%     wmemcmp
+0.00%     [kernel.kallsyms][+ffffffa4534b0ef4]
+0.00%     [kernel.kallsyms][+ffffffa45336e544]
+0.00%     vsnprintf
+0.00%     MNN::CPUBackend::getRuntime()
+0.00%     [kernel.kallsyms][+ffffffa4534664f8]
+0.00%     [kernel.kallsyms][+ffffffa45347bd14]
+0.00%     [kernel.kallsyms][+ffffffa453445a3c]
+0.00%     [kernel.kallsyms][+ffffffa453280eec]
+0.00%     [kernel.kallsyms][+ffffffa45344a540]
+0.00%     [kernel.kallsyms][+ffffffa45348e398]
+0.00%     [kernel.kallsyms][+ffffffa4532928d0]
+0.00%     MNNQuantizeFP16_UNIT4
+0.00%     [kernel.kallsyms][+ffffffa4532e7988]
+0.00%     [kernel.kallsyms][+ffffffa45375afdc]
+0.00%     [kernel.kallsyms][+ffffffa453eb9240]
+0.00%     [kernel.kallsyms][+ffffffa4534845c0]
+0.00%     [kernel.kallsyms][+ffffffa4547a7914]
+0.00%     [kernel.kallsyms][+ffffffa4534b1134]
+0.00%     [kernel.kallsyms][+ffffffa4532a9120]
+0.00%     [kernel.kallsyms][+ffffffa4534b00e0]
+0.00%     [kernel.kallsyms][+ffffffa4534449dc]
+0.00%     MNN::SizeComputer::needInputContent(MNN::Op const*, int)
+0.00%     [kernel.kallsyms][+ffffffa453444a88]
+0.00%     std::__ndk1::basic_istream<char, std::__ndk1::char_traits<char> >::sentry::sentry(std::__ndk1::basic_istream<char, std::__ndk1::char_traits<char> >&, bool)
+0.00%     [kernel.kallsyms][+ffffffa4532a926c]
+0.00%     [kernel.kallsyms][+ffffffa453445988]
+0.00%     MNN::GeometryComputerUtils::buildConstantTensors(std::__ndk1::vector<MNN::Schedule::OpCacheInfo, std::__ndk1::allocator<MNN::Schedule::OpCacheInfo> >&)
+0.00%     [kernel.kallsyms][+ffffffa4534b1338]
+0.00%     [kernel.kallsyms][+ffffffa453483784]
+0.00%     extent_rtree_leaf_elms_lookup
+0.00%     [kernel.kallsyms][+ffffffa453446cb0]
+0.00%     void std::__ndk1::__tree_balance_after_insert[abi:v170000]<std::__ndk1::__tree_node_base<void*>*>(std::__ndk1::__tree_node_base<void*>*, std::__ndk1::__tree_node_base<void*>*)
+0.00%     arena_bin_malloc_hard
+0.00%     [kernel.kallsyms][+ffffffa4534b0ed4]
+0.00%     [kernel.kallsyms][+ffffffa45344491c]
+0.00%     [kernel.kallsyms][+ffffffa4534a0358]
+0.00%     [kernel.kallsyms][+ffffffa45348fe48]
+0.00%     [kernel.kallsyms][+ffffffa453466a64]
+0.00%     [kernel.kallsyms][+ffffffa453443ce8]
+0.00%     LoopE1
+0.00%     [kernel.kallsyms][+ffffffa45343bd84]
+0.00%     [kernel.kallsyms][+ffffffa4534b0368]
+0.00%     FLLoop16
+0.00%     MNN::DeferBufferAllocator::apply()
+0.00%     LoopNumber
+0.00%     std::__ndk1::__function::__func<MNN::CPURaster::onResize(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_2, std::__ndk1::allocator<MNN::CPURaster::onResize(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_2>, void (int)>::operator()(int&&)
+0.00%     MNN::Tensor::getDimensionType() const
+0.00%     std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> >::__append(unsigned long)
+0.00%     MNN::MNNAsyQuantInfo_FP16(float*, float*, float*, float*, float*, float*, float*, unsigned long const*)
+0.00%     TILE_2
+0.00%     MNN::Session::getPipelineInfo(int) const
+0.00%     MNN::GeometryComputer::Context::getRasterCacheCreateRecursive(MNN::Tensor*, MNN::CommandBuffer&)
+0.00%     extent_lock_from_addr
+0.00%     [kernel.kallsyms][+ffffffa453489370]
+0.00%     [kernel.kallsyms][+ffffffa453445a78]
+0.00%     [kernel.kallsyms][+ffffffa454786d68]
+0.00%     [kernel.kallsyms][+ffffffa45344a5b0]
+0.00%     [kernel.kallsyms][+ffffffa4534808ac]
+0.00%     [kernel.kallsyms][+ffffffa45336ef94]
+0.00%     std::__ndk1::__tree<std::__ndk1::__value_type<unsigned long, MNN::SharedPtr<MNN::EagerBufferAllocator::Node> >, std::__ndk1::__map_value_compare<unsigned long, std::__ndk1::__value_type<unsigned long, MNN::SharedPtr<MNN::EagerBufferAllocator::Node> >, std::__ndk1::less<unsigned long>, true>, std::__ndk1::allocator<std::__ndk1::__value_type<unsigned long, MNN::SharedPtr<MNN::EagerBufferAllocator::Node> > > >::destroy(std::__ndk1::__tree_node<std::__ndk1::__value_type<unsigned long, MNN::SharedPtr<MNN::EagerBufferAllocator::Node> >, void*>*)
+0.00%     std::__ndk1::ios_base::clear(unsigned int)
+0.00%     [kernel.kallsyms][+ffffffa453481128]
+0.00%     LoopSz_12
+0.00%     operator delete(void*)
+0.00%     TILE_1_Init
+0.00%     [kernel.kallsyms][+ffffffa45336e524]
+0.00%     LoopSz_16
+0.00%     Loop
+0.00%     std::__ndk1::__function::__func<MNN::CPUKVCacheManager::onUpdateKV(MNN::Tensor const*, MNN::Tensor const*, int)::$_0, std::__ndk1::allocator<MNN::CPUKVCacheManager::onUpdateKV(MNN::Tensor const*, MNN::Tensor const*, int)::$_0>, void (int)>::operator()(int&&)
+0.00%     [kernel.kallsyms][+ffffffa454786f50]
+0.00%     [kernel.kallsyms][+ffffffa4534adacc]
+0.00%     [kernel.kallsyms][+ffffffa4534b0030]
+0.00%     MNN::TensorUtils::setLinearLayout(MNN::Tensor*)
+0.00%     flatbuffers::FlatBufferBuilder::EndTable(unsigned int)
+0.00%     __fseeko64(__sFILE*, long, int, int)
+0.00%     je_tcache_event_hard
+0.00%     MNN::WrapCopyExecution::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)
+0.00%     [kernel.kallsyms][+ffffffa45343bfe8]
+0.00%     MNN::Arm82Backend::onCopyBuffer(MNN::Tensor const*, MNN::Tensor const*) const
+0.00%     FLLoop4
+0.00%     MNN::Transformer::Llm::embedding(std::__ndk1::vector<int, std::__ndk1::allocator<int> > const&)
+0.00%     [kernel.kallsyms][+ffffffa45349af50]
+0.00%     madvise
+0.00%     [kernel.kallsyms][+ffffffa4547a1478]
+0.00%     L8Tile12LoopCheck
+0.00%     [kernel.kallsyms][+ffffffa4533037d4]
+0.00%     E1End
+0.00%     clock_gettime
+0.00%     [kernel.kallsyms][+ffffffa4533037b0]
+0.00%     [kernel.kallsyms][+ffffffa453489390]
+0.00%     [kernel.kallsyms][+ffffffa4532857b8]
+0.00%     [kernel.kallsyms][+ffffffa45336de08]
+0.00%     StoreLH1x8
+0.00%     [kernel.kallsyms][+ffffffa453423784]
+0.00%     [kernel.kallsyms][+ffffffa45347af6c]
+0.00%     [kernel.kallsyms][+ffffffa4534a2bf8]
+0.00%     [kernel.kallsyms][+ffffffa4534e3124]
+0.00%     [kernel.kallsyms][+ffffffa4534c8858]
+0.00%     [kernel.kallsyms][+ffffffa45375af9c]
+0.00%     [kernel.kallsyms][+ffffffa45344a584]
+0.00%     [kernel.kallsyms][+ffffffa4534ac038]
+0.00%     std::__ndk1::ios_base::getloc() const
+0.00%     MNNMemoryAllocAlign
+0.00%     std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >::find(char, unsigned long) const
+0.00%     [kernel.kallsyms][+ffffffa4534ce93c]
+0.00%     [kernel.kallsyms][+ffffffa4534849ac]
+0.00%     MNN::TensorConvertInfo::Verify(flatbuffers::Verifier&) const
+0.00%     [kernel.kallsyms][+ffffffa45375afd0]
+0.00%     __sflags
+0.00%     [kernel.kallsyms][+ffffffa4547a7a4c]
+0.00%     void flatbuffers::FlatBufferBuilder::AddElement<int>(unsigned short, int, int)
+0.00%     [kernel.kallsyms][+ffffffa45347f974]
+0.00%     [kernel.kallsyms][+ffffffa45348ff10]
+0.00%     [kernel.kallsyms][+ffffffa453445ad8]
+0.00%     [kernel.kallsyms][+ffffffa45348fc4c]
+0.00%     std::__ndk1::locale::~locale()
+0.00%     [kernel.kallsyms][+ffffffa453768fe8]
+0.00%     [kernel.kallsyms][+ffffffa4534b0328]
+0.00%     extent_merge_impl
+0.00%     [kernel.kallsyms][+ffffffa4532ebd18]
+0.00%     [kernel.kallsyms][+ffffffa45336df38]
+0.00%     [kernel.kallsyms][+ffffffa453488128]
+0.00%     android::hardware::drm::V1_3::static_constructor() (.cfi)
+0.00%     [kernel.kallsyms][+ffffffa4534ac014]
+0.00%     [kernel.kallsyms][+ffffffa45343bc70]
+0.00%     [kernel.kallsyms][+ffffffa45337ffc0]
+0.00%     [kernel.kallsyms][+ffffffa4536ae91c]
+0.00%     [kernel.kallsyms][+ffffffa453443b4c]
+0.00%     [kernel.kallsyms][+ffffffa4534845ac]
+0.00%     [kernel.kallsyms][+ffffffa453445968]
+0.00%     [kernel.kallsyms][+ffffffa45348d000]
+0.00%     je_pages_set_thp_state
+0.00%     [kernel.kallsyms][+ffffffa453483f14]
+0.00%     [kernel.kallsyms][+ffffffa453452888]
+0.00%     [kernel.kallsyms][+ffffffa45344a580]
+0.00%     [kernel.kallsyms][+ffffffa45343c9f8]
+0.00%     [kernel.kallsyms][+ffffffa453483724]
+0.00%     [kernel.kallsyms][+ffffffa453466c30]
+0.00%     arena_choose
+0.00%     [kernel.kallsyms][+ffffffa4534886ac]
+0.00%     je_arena_extent_alloc_large
+0.00%     [kernel.kallsyms][+ffffffa4547a7d3c]
+0.00%     MNN::Pipeline::_allocForTensor(int, bool)
+0.00%     [kernel.kallsyms][+ffffffa45344a598]
+0.00%     [kernel.kallsyms][+ffffffa4534bb71c]
+0.00%     std::__1::pair<std::__1::__hash_iterator<std::__1::__hash_node<std::__1::__hash_value_type<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >, int>, void*>*>, bool> std::__1::__hash_table<std::__1::__hash_value_type<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >, int>, std::__1::__unordered_map_hasher<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >, std::__1::__hash_value_type<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >, int>, std::__1::hash<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > >, true>, std::__1::__unordered_map_equal<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >, std::__1::__hash_value_type<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >, int>, std::__1::equal_to<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > >, true>, std::__1::allocator<std::__1::__hash_value_type<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >, int> > >::__emplace_unique_key_args<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >, std::__1::pair<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > const, int> const&>(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > const&, std::__1::pair<std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> > const, int> const&)
+0.00%     [kernel.kallsyms][+ffffffa453465ee4]
+0.00%     [kernel.kallsyms][+ffffffa453465eec]
+0.00%     _GLOBAL__sub_I_IHdrLayerInfoListener.cpp
+0.00%     std::__ndk1::vector<long, std::__ndk1::allocator<long> >::__append(unsigned long)
+0.00%     [kernel.kallsyms][+ffffffa45344a550]
+0.00%     sz_size2index_compute
+0.00%     MNN::BinaryOpComputer::onComputeSize(MNN::Op const*, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&) const
+0.00%     [kernel.kallsyms][+ffffffa4547a7a50]
+0.00%     MNN::MemChunk::attach(MNN::Tensor*)
+0.00%     __sfp
+0.00%     [kernel.kallsyms][+ffffffa45348cf68]
+0.00%     [kernel.kallsyms][+ffffffa4534a0368]
+0.00%     [kernel.kallsyms][+ffffffa453446e48]
+0.00%     [kernel.kallsyms][+ffffffa45343a758]
+0.00%     [kernel.kallsyms][+ffffffa4532a9180]
+0.00%     [kernel.kallsyms][+ffffffa45344489c]
+0.00%     [kernel.kallsyms][+ffffffa4534459c4]
+0.00%     [kernel.kallsyms][+ffffffa453483c04]
+0.00%     [kernel.kallsyms][+ffffffa453489344]
+0.00%     [kernel.kallsyms][+ffffffa4536bd0b4]
+0.00%     [kernel.kallsyms][+ffffffa4534e7244]
+0.00%     [kernel.kallsyms][+ffffffa45343cacc]
+0.00%     [kernel.kallsyms][+ffffffa45478794c]
+0.00%     [kernel.kallsyms][+ffffffa4534c4af4]
+0.00%     [kernel.kallsyms][+ffffffa45334e664]
+0.00%     sha256_block_armv8
+0.00%     [kernel.kallsyms][+ffffffa453483c2c]
+0.00%     [kernel.kallsyms][+ffffffa4533803a4]
+0.00%     [kernel.kallsyms][+ffffffa4534a0354]
+0.00%     [kernel.kallsyms][+ffffffa4534837d0]
+0.00%     MNN::Arm82Backend::onCreate(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, MNN::Op const*)
+0.00%     base_alloc_impl
+0.00%     [kernel.kallsyms][+ffffffa4534528a0]
+0.00%     [kernel.kallsyms][+ffffffa4534b0324]
+0.00%     MNN::CreateIDSTQuan(flatbuffers::FlatBufferBuilder&, flatbuffers::Offset<flatbuffers::Vector<signed char> >, flatbuffers::Offset<flatbuffers::Vector<float> >, int, bool, float, float, float, int, int, int, bool, bool, unsigned int, flatbuffers::Offset<flatbuffers::Vector<unsigned int> >, flatbuffers::Offset<flatbuffers::Vector<unsigned short> >, MNN::ScaleStorageType)
+0.00%     [kernel.kallsyms][+ffffffa4534b0e48]
+0.00%     [kernel.kallsyms][+ffffffa453299db8]
+0.00%     [linker]BionicSmallObjectAllocator::alloc()
+0.00%     [kernel.kallsyms][+ffffffa45363fcb0]
+0.00%     MNN::IDSTQuan::UnPackTo(MNN::IDSTQuanT*, std::__ndk1::function<void (void**, unsigned long)> const*) const
+0.00%     [kernel.kallsyms][+ffffffa4534a0400]
+0.00%     MNN::CreateOp(flatbuffers::FlatBufferBuilder&, flatbuffers::Offset<flatbuffers::Vector<int> >, MNN::OpParameter, flatbuffers::Offset<void>, flatbuffers::Offset<flatbuffers::String>, flatbuffers::Offset<flatbuffers::Vector<int> >, MNN::OpType, MNN::MNN_DATA_FORMAT, flatbuffers::Offset<flatbuffers::String>)
+0.00%     [kernel.kallsyms][+ffffffa45348accc]
+0.00%     MNN::TensorConvertInfo::UnPack(std::__ndk1::function<void (void**, unsigned long)> const*) const
+0.00%     [kernel.kallsyms][+ffffffa4534eb3e8]
+0.00%     [kernel.kallsyms][+ffffffa4534e9518]
+0.00%     [kernel.kallsyms][+ffffffa4534a24e0]
+0.00%     [kernel.kallsyms][+ffffffa4534527e0]
+0.00%     MNN::LayerNorm::UnPackTo(MNN::LayerNormT*, std::__ndk1::function<void (void**, unsigned long)> const*) const
+0.00%     [kernel.kallsyms][+ffffffa4534ac214]
+0.00%     [kernel.kallsyms][+ffffffa454786f48]
+0.00%     MNN::initTensors(std::__ndk1::vector<std::__ndk1::shared_ptr<MNN::Tensor>, std::__ndk1::allocator<std::__ndk1::shared_ptr<MNN::Tensor> > >&, MNN::Net const*, int const*, unsigned long)
+0.00%     [kernel.kallsyms][+ffffffa4534c8228]
+0.00%     [kernel.kallsyms][+ffffffa453490908]
+0.00%     flatbuffers::FlatBufferBuilder::Finish(unsigned int, char const*, bool)
+0.00%     std::__ndk1::__shared_ptr_pointer<MNN::Tensor*, std::__ndk1::shared_ptr<MNN::Tensor>::__shared_ptr_default_delete<MNN::Tensor, MNN::Tensor>, std::__ndk1::allocator<MNN::Tensor> >::__on_zero_shared_weak()
+0.00%     je_tcache_bin_flush_large
+0.00%     [kernel.kallsyms][+ffffffa4533c90bc]
+0.00%     [kernel.kallsyms][+ffffffa4534b02a4]
+0.00%     [kernel.kallsyms][+ffffffa453443e94]
+0.00%     MNN::CPUAttention::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_2::~$_2()
+0.00%     [kernel.kallsyms][+ffffffa45348e9ec]
+0.00%     [kernel.kallsyms][+ffffffa4534e315c]
+0.00%     read
+0.00%     __emutls_get_address
+0.00%     [kernel.kallsyms][+ffffffa453483cf8]
+0.00%     MNN::Express::PipelineModule::onForward(std::__ndk1::vector<MNN::Express::VARP, std::__ndk1::allocator<MNN::Express::VARP> > const&)
+0.00%     MNN::Transformer::Sampler::stepSelect(MNN::Transformer::SamplerState&)
+0.00%     E1_LoopLEx6
+0.00%     [kernel.kallsyms][+ffffffa453645424]
+0.00%     [kernel.kallsyms][+ffffffa454786f68]
+0.00%     MNN::Transformer::Sampler::sample(MNN::Express::VARP)
+0.00%     MNN::Express::Expr::visitOutputs(std::__ndk1::function<bool (std::__ndk1::shared_ptr<MNN::Express::Expr>, int)> const&)
+0.00%     [kernel.kallsyms][+ffffffa4532a90b4]
+0.00%     [kernel.kallsyms][+ffffffa453453638]
+0.00%     [kernel.kallsyms][+ffffffa4532a90a8]
+0.00%     MNN::CPUBackend::onExecuteEnd() const
+0.00%     MNNSumByAxisLForMatmul_A_ARM82
+0.00%     [kernel.kallsyms][+ffffffa45343a690]
+0.00%     [kernel.kallsyms][+ffffffa4534821a8]
+0.00%     MNN::Express::StaticModule::onForward(std::__ndk1::vector<MNN::Express::VARP, std::__ndk1::allocator<MNN::Express::VARP> > const&)
+0.00%     [kernel.kallsyms][+ffffffa4534459a8]
+0.00%     TILE_20
+0.00%     [kernel.kallsyms][+ffffffa453444ab8]
+0.00%     [kernel.kallsyms][+ffffffa4547a7ed0]
+0.00%     TILE1_BLOCK_INNER_END
+0.00%     [kernel.kallsyms][+ffffffa453484e90]
+0.00%     [kernel.kallsyms][+ffffffa45348ac58]
+0.00%     [kernel.kallsyms][+ffffffa45347b914]
+0.00%     [kernel.kallsyms][+ffffffa45334ef60]
+0.00%     MNN::TensorConvertSizeComputer::onComputeSize(MNN::Op const*, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&) const
+0.00%     [kernel.kallsyms][+ffffffa4532e0bdc]
+0.00%     [kernel.kallsyms][+ffffffa4534d5b50]
+0.00%     [linker]bool plain_relocate_impl<(RelocMode)0>(Relocator&, elf64_rela*, unsigned long)
+0.00%     [kernel.kallsyms][+ffffffa45348f6f8]
+0.00%     [kernel.kallsyms][+ffffffa45347b928]
+0.00%     void std::__ndk1::vector<std::__ndk1::unique_ptr<MNN::MemNode, std::__ndk1::default_delete<MNN::MemNode> >, std::__ndk1::allocator<std::__ndk1::unique_ptr<MNN::MemNode, std::__ndk1::default_delete<MNN::MemNode> > > >::__emplace_back_slow_path<MNN::MemNode*>(MNN::MemNode*&&)
+0.00%     [kernel.kallsyms][+ffffffa45347b820]
+0.00%     [kernel.kallsyms][+ffffffa45347b8a8]
+0.00%     [kernel.kallsyms][+ffffffa45347bd30]
+0.00%     [kernel.kallsyms][+ffffffa453483718]
+0.00%     [kernel.kallsyms][+ffffffa45348aca0]
+0.00%     [kernel.kallsyms][+ffffffa4533803b0]
+0.00%     [kernel.kallsyms][+ffffffa4534a2fd0]
+0.00%     [kernel.kallsyms][+ffffffa4533c90b0]
+0.00%     [kernel.kallsyms][+ffffffa4534dfdd8]
+0.00%     [kernel.kallsyms][+ffffffa4532a90fc]
+0.00%     [kernel.kallsyms][+ffffffa45347b8a0]
+0.00%     linker64[+11f990]
+0.00%     [kernel.kallsyms][+ffffffa453452768]
+0.00%     [kernel.kallsyms][+ffffffa4533c90c0]
+0.00%     [kernel.kallsyms][+ffffffa4547a7834]
+0.00%     [kernel.kallsyms][+ffffffa45344495c]
+0.00%     [kernel.kallsyms][+ffffffa4534e3330]
+0.00%     [kernel.kallsyms][+ffffffa4534459f0]
+0.00%     [kernel.kallsyms][+ffffffa45348a158]
+0.00%     [linker]__memchr_aarch64
+0.00%     [kernel.kallsyms][+ffffffa45347f3e4]
+0.00%     [kernel.kallsyms][+ffffffa453489ecc]
+0.00%     [linker]arc4random
+0.00%     [kernel.kallsyms][+ffffffa4534a2650]
+0.00%     [kernel.kallsyms][+ffffffa454786d6c]
+0.00%     [kernel.kallsyms][+ffffffa45343c8c8]
+0.00%     [kernel.kallsyms][+ffffffa45328e19c]
+0.00%     [kernel.kallsyms][+ffffffa453367b40]
+0.00%     [kernel.kallsyms][+ffffffa45348094c]
+0.00%     [kernel.kallsyms][+ffffffa453443e84]
+0.00%     [kernel.kallsyms][+ffffffa453443e80]
+0.00%     [kernel.kallsyms][+ffffffa453286e14]
+0.00%     [kernel.kallsyms][+ffffffa453396f40]
+0.00%     [kernel.kallsyms][+ffffffa453443cac]
+0.00%     [kernel.kallsyms][+ffffffa45348fe28]
+0.00%     [kernel.kallsyms][+ffffffa4534b0e44]
+0.00%     std::__ndk1::ctype<char>::do_widen(char) const
+0.00%     extent_unlock2
+0.00%     void std::__ndk1::__hash_table<std::__ndk1::__hash_value_type<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, int>, std::__ndk1::__unordered_map_hasher<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, std::__ndk1::__hash_value_type<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, int>, MNN::Transformer::HuggingfaceTokenizer::hash_pair_wstring, std::__ndk1::equal_to<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > > >, true>, std::__ndk1::__unordered_map_equal<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, std::__ndk1::__hash_value_type<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, int>, std::__ndk1::equal_to<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > > >, MNN::Transformer::HuggingfaceTokenizer::hash_pair_wstring, true>, std::__ndk1::allocator<std::__ndk1::__hash_value_type<std::__ndk1::pair<std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> >, std::__ndk1::basic_string<wchar_t, std::__ndk1::char_traits<wchar_t>, std::__ndk1::allocator<wchar_t> > >, int> > >::__do_rehash<true>(unsigned long)
+0.00%     [kernel.kallsyms][+ffffffa453443fac]
+0.00%     Body
+0.00%     std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> >::basic_string(std::__ndk1::basic_string<char, std::__ndk1::char_traits<char>, std::__ndk1::allocator<char> > const&)
+0.00%     [kernel.kallsyms][+ffffffa4532a9158]
+0.00%     [kernel.kallsyms][+ffffffa453444964]
+0.00%     [kernel.kallsyms][+ffffffa4534b0e74]
+0.00%     [kernel.kallsyms][+ffffffa4534e9b70]
+0.00%     [kernel.kallsyms][+ffffffa453480778]
+0.00%     MNN::initPipelineInfosFromOps(std::__ndk1::vector<MNN::Schedule::OpCacheInfo, std::__ndk1::allocator<MNN::Schedule::OpCacheInfo> >&, std::__ndk1::vector<MNN::Op const*, std::__ndk1::allocator<MNN::Op const*> >&, std::__ndk1::vector<std::__ndk1::shared_ptr<MNN::Tensor>, std::__ndk1::allocator<std::__ndk1::shared_ptr<MNN::Tensor> > > const&)
+0.00%     [kernel.kallsyms][+ffffffa4534808dc]
+0.00%     [kernel.kallsyms][+ffffffa4534ac01c]
+0.00%     [kernel.kallsyms][+ffffffa453452748]
+0.00%     [kernel.kallsyms][+ffffffa453484358]
+0.00%     [kernel.kallsyms][+ffffffa45348498c]
+0.00%     je_extent_heap_first
+0.00%     MNN::Express::Module::clearCache()
+0.00%     [kernel.kallsyms][+ffffffa45336e53c]
+0.00%     [kernel.kallsyms][+ffffffa45351912c]
+0.00%     [kernel.kallsyms][+ffffffa4534b06a0]
+0.00%     [kernel.kallsyms][+ffffffa453445a24]
+0.00%     [kernel.kallsyms][+ffffffa453484590]
+0.00%     [kernel.kallsyms][+ffffffa45348086c]
+0.00%     [kernel.kallsyms][+ffffffa453453660]
+0.00%     [kernel.kallsyms][+ffffffa453445948]
+0.00%     [kernel.kallsyms][+ffffffa4532a90d8]
+0.00%     [kernel.kallsyms][+ffffffa4534e9770]
+0.00%     MNN::LayerNorm::UnPack(std::__ndk1::function<void (void**, unsigned long)> const*) const
+0.00%     [kernel.kallsyms][+ffffffa453480e68]
+0.00%     [kernel.kallsyms][+ffffffa453453658]
+0.00%     [kernel.kallsyms][+ffffffa453453624]
+0.00%     [kernel.kallsyms][+ffffffa45343a87c]
+0.00%     [kernel.kallsyms][+ffffffa453466a50]
+0.00%     [kernel.kallsyms][+ffffffa4534b0018]
+0.00%     MNN::Express::StaticModule::onClearCache()
+0.00%     [kernel.kallsyms][+ffffffa4534a036c]
+0.00%     [kernel.kallsyms][+ffffffa4547a7a78]
+0.00%     [kernel.kallsyms][+ffffffa4547a7bd4]
+0.00%     [kernel.kallsyms][+ffffffa45348ac94]
+0.00%     MNN::CPUKVCacheManager::onAlloc(MNN::KVMeta*, int)
+0.00%     [kernel.kallsyms][+ffffffa4534b00e8]
+0.00%     [kernel.kallsyms][+ffffffa45343b810]
+0.00%     [kernel.kallsyms][+ffffffa4534ac220]
+0.00%     [kernel.kallsyms][+ffffffa45349af48]
+0.00%     [kernel.kallsyms][+ffffffa45374d7e4]
+0.00%     [kernel.kallsyms][+ffffffa453445a08]
+0.00%     je_large_dalloc
+0.00%     extent_split_impl
+0.00%     [kernel.kallsyms][+ffffffa453484b94]
+0.00%     [kernel.kallsyms][+ffffffa45348ac90]
+0.00%     [kernel.kallsyms][+ffffffa454786f6c]
+0.00%     [kernel.kallsyms][+ffffffa454786e00]
+0.00%     [kernel.kallsyms][+ffffffa453483c08]
+0.00%     [kernel.kallsyms][+ffffffa4534eb3fc]
+0.00%     MNN::CreateConvolution2D(flatbuffers::FlatBufferBuilder&, flatbuffers::Offset<MNN::Convolution2DCommon>, flatbuffers::Offset<flatbuffers::Vector<float> >, flatbuffers::Offset<flatbuffers::Vector<float> >, flatbuffers::Offset<MNN::IDSTQuan>, flatbuffers::Offset<MNN::QuantizedFloatParam>, flatbuffers::Offset<MNN::SparseCommon>, flatbuffers::Offset<flatbuffers::Vector<long> >)
+0.00%     [kernel.kallsyms][+ffffffa4532a9290]
+0.00%     [kernel.kallsyms][+ffffffa453484834]
+0.00%     [kernel.kallsyms][+ffffffa45336e548]
+0.00%     MNN::Express::NetModule::onForward(std::__ndk1::vector<MNN::Express::VARP, std::__ndk1::allocator<MNN::Express::VARP> > const&)
+0.00%     [kernel.kallsyms][+ffffffa4536b03d0]
+0.00%     [kernel.kallsyms][+ffffffa453484cf0]
+0.00%     [kernel.kallsyms][+ffffffa454792e44]
+0.00%     [kernel.kallsyms][+ffffffa45352a0e0]
+0.00%     [kernel.kallsyms][+ffffffa453484e58]
+0.00%     [kernel.kallsyms][+ffffffa45336e50c]
+0.00%     [kernel.kallsyms][+ffffffa4532a9190]
+0.00%     [kernel.kallsyms][+ffffffa4534ae1d4]
+0.00%     MNN::ConvolutionTiledExecutor::turnIm2ColToBlitInfo(float const**, int*, int, int, MNN::ConvolutionCommon::Im2ColParameter const&, unsigned char const*, int)
+0.00%     TILE_16
+0.00%     [kernel.kallsyms][+ffffffa4536af4f8]
+0.00%     [kernel.kallsyms][+ffffffa4534a0348]
+0.00%     [kernel.kallsyms][+ffffffa45344a564]
+0.00%     [kernel.kallsyms][+ffffffa4534b0350]
+0.00%     [kernel.kallsyms][+ffffffa4534843e4]
+0.00%     [kernel.kallsyms][+ffffffa45343bd70]
+0.00%     [kernel.kallsyms][+ffffffa45348fc34]
+0.00%     [kernel.kallsyms][+ffffffa453452868]
+0.00%     [kernel.kallsyms][+ffffffa45343a6a0]
+0.00%     __sclose
+0.00%     [kernel.kallsyms][+ffffffa4534ac034]
+0.00%     extent_split_interior
+0.00%     [kernel.kallsyms][+ffffffa4534449ec]
+0.00%     [kernel.kallsyms][+ffffffa453446c84]
+0.00%     [kernel.kallsyms][+ffffffa453484bb0]
+0.00%     [kernel.kallsyms][+ffffffa4532a9150]
+0.00%     [kernel.kallsyms][+ffffffa453280e54]
+0.00%     [kernel.kallsyms][+ffffffa4534e9b78]
+0.00%     MNN::OpParameterUnion::UnPack(void const*, MNN::OpParameter, std::__ndk1::function<void (void**, unsigned long)> const*)
+0.00%     MNN::CreateOp(flatbuffers::FlatBufferBuilder&, MNN::OpT const*, std::__ndk1::function<unsigned long (void*)> const*)
+0.00%     [kernel.kallsyms][+ffffffa4532a9100]
+0.00%     [kernel.kallsyms][+ffffffa45343bd74]
+0.00%     [kernel.kallsyms][+ffffffa453712e58]
+0.00%     [kernel.kallsyms][+ffffffa453484814]
+0.00%     [kernel.kallsyms][+ffffffa4534b0290]
+0.00%     [kernel.kallsyms][+ffffffa45343b848]
+0.00%     [kernel.kallsyms][+ffffffa453280e08]
+0.00%     MNN::Convolution2D::UnPackTo(MNN::Convolution2DT*, std::__ndk1::function<void (void**, unsigned long)> const*) const
+0.00%     [kernel.kallsyms][+ffffffa4534843dc]
+0.00%     [kernel.kallsyms][+ffffffa453483eb8]
+0.00%     [kernel.kallsyms][+ffffffa453484bb4]
+0.00%     L8LoopDz_TILE_1
+0.00%     [kernel.kallsyms][+ffffffa453444a94]
+0.00%     [kernel.kallsyms][+ffffffa4534664e0]
+0.00%     MNN::Op::UnPackTo(MNN::OpT*, std::__ndk1::function<void (void**, unsigned long)> const*) const
+0.00%     [kernel.kallsyms][+ffffffa4532a940c]
+0.00%     [kernel.kallsyms][+ffffffa453445a7c]
+0.00%     [kernel.kallsyms][+ffffffa453394738]
+0.00%     [kernel.kallsyms][+ffffffa45336e538]
+0.00%     MNN::Express::StaticModule::resetInputOutputs()
+0.00%     [kernel.kallsyms][+ffffffa453483bf0]
+0.00%     [kernel.kallsyms][+ffffffa454786fac]
+0.00%     MNN::Convolution2DCommon::UnPackTo(MNN::Convolution2DCommonT*, std::__ndk1::function<void (void**, unsigned long)> const*) const
+0.00%     [kernel.kallsyms][+ffffffa4534ae1f8]
+0.00%     fread_unlocked
+0.00%     [kernel.kallsyms][+ffffffa45348376c]
+0.00%     [kernel.kallsyms][+ffffffa4534a03fc]
+0.00%     [kernel.kallsyms][+ffffffa45344a534]
+0.00%     [kernel.kallsyms][+ffffffa4532a90cc]
+0.00%     [kernel.kallsyms][+ffffffa4533038a4]
+0.00%     L8Tile4LoopCheck
+0.00%     [kernel.kallsyms][+ffffffa453482134]
+0.00%     [kernel.kallsyms][+ffffffa45334e654]
+0.00%     [kernel.kallsyms][+ffffffa4534b02ac]
+0.00%     [kernel.kallsyms][+ffffffa4534bfaa8]
+0.00%     MNN::CreateConvolution2DCommon(flatbuffers::FlatBufferBuilder&, int, int, int, int, int, int, int, int, MNN::PadMode, int, int, int, bool, bool, flatbuffers::Offset<flatbuffers::Vector<int> >, flatbuffers::Offset<flatbuffers::Vector<int> >, bool)
+0.00%     [kernel.kallsyms][+ffffffa4547a7c00]
+0.00%     [kernel.kallsyms][+ffffffa453482444]
+0.00%     [kernel.kallsyms][+ffffffa45343a698]
+0.00%     [kernel.kallsyms][+ffffffa453482168]
+0.00%     MNN::CPUMemObj::~CPUMemObj()
+0.00%     [kernel.kallsyms][+ffffffa453484998]
+0.00%     [kernel.kallsyms][+ffffffa453484dc4]
+0.00%     [kernel.kallsyms][+ffffffa45344499c]
+0.00%     MNN::Tensor::shape() const
+0.00%     je_large_palloc
+0.00%     [kernel.kallsyms][+ffffffa4534ae1e0]
+0.00%     [kernel.kallsyms][+ffffffa453443ccc]
+0.00%     [kernel.kallsyms][+ffffffa454786f94]
+0.00%     [linker]BionicAllocator::alloc_impl(unsigned long, unsigned long)
+0.00%     [kernel.kallsyms][+ffffffa45351c180]
+0.00%     [kernel.kallsyms][+ffffffa4547a1488]
+0.00%     std::__ndk1::__function::__func<MNN::CPUAttention::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_3, std::__ndk1::allocator<MNN::CPUAttention::onExecute(std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&)::$_3>, void (int)>::__clone(std::__ndk1::__function::__base<void (int)>*) const
+0.00%     MNN::DeferBufferAllocator::alloc(unsigned long, bool, unsigned long)
+0.00%     [kernel.kallsyms][+ffffffa45336df40]
+0.00%     __strlen_aarch64
+0.00%     MNN::Transformer::Llm::forwardRaw(MNN::Express::VARP, MNN::Express::VARP, MNN::Express::VARP, std::__ndk1::vector<MNN::Express::VARP, std::__ndk1::allocator<MNN::Express::VARP> >)
+0.00%     [kernel.kallsyms][+ffffffa4534b0df8]
+0.00%     [kernel.kallsyms][+ffffffa4534a2588]
+0.00%     [kernel.kallsyms][+ffffffa45349af4c]
+0.00%     MNN::CPUTensorConverter::convert(void const*, void*, MNN::MNN_DATA_FORMAT, MNN::MNN_DATA_FORMAT, int, int, int, int, MNN::CoreFunctions const*, int, int)
+0.00%     [kernel.kallsyms][+ffffffa4533038b4]
+0.00%     [kernel.kallsyms][+ffffffa453483084]
+0.00%     MNN::Session::resize()
+0.00%     MNN::Express::ExecutorScope::~ExecutorScope()
+0.00%     extent_record
+0.00%     [kernel.kallsyms][+ffffffa4534bf6a0]
+0.00%     MNN::FileLoader::FileLoader(char const*, bool)
+0.00%     TILE1_LAST_QUAD
+0.00%     MNN::Backend::onAcquireBuffer(MNN::Tensor const*, MNN::Backend::StorageType)
+0.00%     MNN::CPUBackend::multiThreadDivide(int) const
+0.00%     je_tcache_alloc_small_hard
+0.00%     [kernel.kallsyms][+ffffffa4534809bc]
+0.00%     MNN::ReshapeComputer::onComputeSize(MNN::Op const*, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&, std::__ndk1::vector<MNN::Tensor*, std::__ndk1::allocator<MNN::Tensor*> > const&) const
+0.00%     [kernel.kallsyms][+ffffffa4534a24d8]
+0.00%     [kernel.kallsyms][+ffffffa453446c7c]
+0.00%     MNN::Schedule::OpCacheInfo::~OpCacheInfo()
+0.00%     [kernel.kallsyms][+ffffffa45479381c]
+0.00%     [kernel.kallsyms][+ffffffa4536af7d4]
+0.00%     [linker]BionicSmallObjectAllocator::free(void*)
+0.00%     std::__ndk1::vector<MNN::CPULoop::ThreadContainer, std::__ndk1::allocator<MNN::CPULoop::ThreadContainer> >::__destroy_vector::operator()[abi:v170000]()
+0.00%     [kernel.kallsyms][+ffffffa454792e48]
+0.00%     sinf
+0.00%     [kernel.kallsyms][+ffffffa453280df8]
+0.00%     [kernel.kallsyms][+ffffffa4547a1480]
+0.00%     MNNGemmInt8AddBiasScale_ARMV82_Unit_FP16
+0.00%     [kernel.kallsyms][+ffffffa4533038b0]
+0.00%     [kernel.kallsyms][+ffffffa4533038b8]
+0.00%     [kernel.kallsyms][+ffffffa45329293c]
+0.00%     [kernel.kallsyms][+ffffffa453280ee8]
+0.00%     [kernel.kallsyms][+ffffffa4533037c4]
+0.00%     [kernel.kallsyms][+ffffffa453443b1c]
+0.00%     [kernel.kallsyms][+ffffffa453280e80]
+0.00%     Tile12End
+0.00%     [kernel.kallsyms][+ffffffa4532928e4]
+0.00%     [kernel.kallsyms][+ffffffa453744bb8]
+0.00%     Body_LoopL8
+0.00%     MNN::Transformer::Sampler::stepTopP(MNN::Transformer::SamplerState&)
+0.00%     [kernel.kallsyms][+ffffffa4533037c0]
+0.00%     [kernel.kallsyms][+ffffffa453292904]
+0.00%     [kernel.kallsyms][+ffffffa4534a0350]
+0.00%     [kernel.kallsyms][+ffffffa4547a7ae8]
+0.00%     [kernel.kallsyms][+ffffffa453541440]
+0.00%     [kernel.kallsyms][+ffffffa453288358]
+0.00%     [kernel.kallsyms][+ffffffa4533002b4]
+0.00%     [kernel.kallsyms][+ffffffa453287644]
+0.00%     [kernel.kallsyms][+ffffffa4534b0dfc]
+0.00%     [kernel.kallsyms][+ffffffa4547a5600]
+0.00%     [kernel.kallsyms][+ffffffa453286dc0]
+0.00%     [kernel.kallsyms][+ffffffa45328765c]
+0.00%     syscall
+0.00%     [kernel.kallsyms][+ffffffa453423200]
+0.00%     [kernel.kallsyms][+ffffffa453300000]
+0.00%     [kernel.kallsyms][+ffffffa4534b1334]
+0.00%     [kernel.kallsyms][+ffffffa4533135d0]
+0.00%     [kernel.kallsyms][+ffffffa4547a1454]
+0.00%     [kernel.kallsyms][+ffffffa45328f6bc]
+0.00%     [kernel.kallsyms][+ffffffa4533002bc]
+0.00%     [kernel.kallsyms][+ffffffa453286ef0]
+0.00%     [kernel.kallsyms][+ffffffa453299dc8]
+0.00%     [kernel.kallsyms][+ffffffa453286f4c]
+0.00%     [kernel.kallsyms][+ffffffa4534231f0]
+0.00%     [kernel.kallsyms][+ffffffa4532c75e0]
+0.00%     pthread_mutex_lock
+0.00%     [kernel.kallsyms][+ffffffa453300294]
+0.00%     [kernel.kallsyms][+ffffffa45328f678]
+0.00%     [kernel.kallsyms][+ffffffa454786d18]
+0.00%     [kernel.kallsyms][+ffffffa4533002d8]
+0.00%     [kernel.kallsyms][+ffffffa453423104]
+0.00%     [kernel.kallsyms][+ffffffa4547a146c]
+0.00%     [kernel.kallsyms][+ffffffa4532863c8]
+0.00%     [kernel.kallsyms][+ffffffa45330029c]
+0.00%     [kernel.kallsyms][+ffffffa4532863b0]
+0.00%     [kernel.kallsyms][+ffffffa453423110]
+0.00%     [kernel.kallsyms][+ffffffa453423114]
+0.00%     [kernel.kallsyms][+ffffffa453286d68]
+0.00%     [kernel.kallsyms][+ffffffa453286d8c]
+0.00%     [kernel.kallsyms][+ffffffa453286fe4]
+0.00%     [kernel.kallsyms][+ffffffa453287640]
+0.00%     [kernel.kallsyms][+ffffffa45328766c]
+0.00%     [kernel.kallsyms][+ffffffa45334e730]
+0.00%     [kernel.kallsyms][+ffffffa4533b5a60]
+0.00%     [kernel.kallsyms][+ffffffa4534238d0]
+0.00%     [kernel.kallsyms][+ffffffa453453610]
+0.00%     [kernel.kallsyms][+ffffffa45348970c]
+0.00%     [kernel.kallsyms][+ffffffa4547a0900]
