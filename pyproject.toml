@@ -9,7 +9,7 @@ description = "Generic inference-engine benchmarking core — traceable performa
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "alsj213" }]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 keywords = [
   "benchmark",
   "inference",
@@ -28,10 +28,10 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: System :: Benchmark",
 ]
 dependencies = ["PyYAML>=6.0"]

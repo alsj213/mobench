@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/alsj213/mobench/actions/workflows/ci.yml"><img src="https://github.com/alsj213/mobench/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
-  <img src="https://img.shields.io/badge/python-3.9%2B-blue.svg" alt="Python 3.9+">
+  <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Android-orange.svg" alt="Linux / Android">
   <img src="https://img.shields.io/badge/engines-llama.cpp%20%7C%20MNN-green.svg" alt="llama.cpp / MNN">
 </p>
@@ -76,7 +76,7 @@ mobench report  results/ --out results/       # Markdown + HTML 报告
 
 ### 作为 Python 包（推荐）
 
-要求 Python **3.9+**：
+要求 Python **3.10+**：
 
 ```bash
 # 核心 CLI（仅依赖 PyYAML）
@@ -263,7 +263,7 @@ pip install -e ".[dev]"
 python3 -m pytest tests/ -q --cov=mobench
 ```
 
-测试套件涵盖 CLI、配置校验、双平台（host / mock adb）、引擎适配器、统计/回归/精度校验、火焰图与 MCP server（GitHub Actions 在 Python 3.9–3.12 矩阵持续验证）。
+测试套件涵盖 CLI、配置校验、双平台（host / mock adb）、引擎适配器、统计/回归/精度校验、火焰图与 MCP server（GitHub Actions 在 Python 3.10–3.13 矩阵持续验证）。
 
 ## Known boundaries & Roadmap
 

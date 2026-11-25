@@ -116,6 +116,17 @@ def test_run_records_measurement_condition(tmp_path, monkeypatch):
     monkeypatch.setattr(host_mod, "_SYSFS_CPU",
                         str(_fake_sysfs(tmp_path / "sysfs")))
     monkeypatch.setattr(host_mod.os, "geteuid", lambda: 1000)  # 无 root
+    # 伪造的 8 核 sysfs 在 <8 核机器（如 CI 4 核 runner）上直接调真 taskset 会失败；
+    # 在 PATH 前置 stub taskset，透传真实命令并保证跨机器可复现。
+    stub_bin = tmp_path / "stub_bin"
+    stub_bin.mkdir()
+    taskset_stub = stub_bin / "taskset"
+    taskset_stub.write_text(
+        "#!/bin/sh\nif [ \"$1\" = \"-c\" ]; then shift 2; else shift 1; fi\nexec \"$@\"\n",
+        encoding="utf-8",
+    )
+    taskset_stub.chmod(0o755)
+    monkeypatch.setenv("PATH", str(stub_bin), prepend=":")
 
     # Act
     meta = run_pipeline(load_config(cfg_path))

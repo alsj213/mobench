@@ -4,7 +4,7 @@
 
 ## 开发环境准备
 
-要求 Python 3.9+：
+要求 Python 3.10+：
 
 ```bash
 git clone https://github.com/alsj213/mobench.git
