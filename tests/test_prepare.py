@@ -45,8 +45,10 @@ def test_download_ok_and_sha_verified(tmp_path, monkeypatch):
     dest = tmp_path / "models" / "tiny.gguf"
     data = b"downloaded-content"
     expected = __import__("hashlib").sha256(data).hexdigest()
+    seen_timeouts = []
 
-    def fake_urlopen(_url):
+    def fake_urlopen(_url, timeout=None):
+        seen_timeouts.append(timeout)
         return io.BytesIO(data)
 
     monkeypatch.setattr(prepare_mod.urllib.request, "urlopen", fake_urlopen)
@@ -60,13 +62,14 @@ def test_download_ok_and_sha_verified(tmp_path, monkeypatch):
     # Assert
     assert info["status"] == "ready"
     assert info["sha256"] == expected
+    assert seen_timeouts == [prepare_mod.DEFAULT_DOWNLOAD_TIMEOUT]
 
 
 def test_download_sha_mismatch_discards(tmp_path, monkeypatch):
     # Arrange
     dest = tmp_path / "models" / "bad.gguf"
 
-    def fake_urlopen(_url):
+    def fake_urlopen(_url, timeout=None):
         return io.BytesIO(b"tampered")
 
     monkeypatch.setattr(prepare_mod.urllib.request, "urlopen", fake_urlopen)
@@ -79,6 +82,37 @@ def test_download_sha_mismatch_discards(tmp_path, monkeypatch):
     with pytest.raises(PrepareError, match="sha256 mismatch"):
         prepare_model(cfg, model)
     assert not dest.exists()  # artifact discarded
+
+
+def test_download_rejects_non_http_scheme(tmp_path):
+    dest = tmp_path / "models" / "local.gguf"
+    cfg = model_cfg(tmp_path)
+    model = {"id": "m", "path": str(dest), "source": {"url": "file:///etc/passwd"}}
+
+    with pytest.raises(PrepareError, match="unsupported URL scheme"):
+        prepare_model(cfg, model)
+    assert not dest.exists()
+
+
+def test_download_error_cleans_up_part_file(tmp_path, monkeypatch):
+    dest = tmp_path / "models" / "partial.gguf"
+
+    class BrokenStream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, _n):
+            raise OSError("network drop")
+
+    monkeypatch.setattr(prepare_mod.urllib.request, "urlopen", lambda _u, timeout=None: BrokenStream())
+
+    with pytest.raises(OSError, match="network drop"):
+        prepare_mod.download("https://x/partial.gguf", str(dest))
+    assert not dest.exists()
+    assert not (tmp_path / "models" / "partial.gguf.part").exists()
 
 
 def test_convert_llama_cpp_uses_engine_tool(tmp_path):

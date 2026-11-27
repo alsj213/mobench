@@ -1,7 +1,7 @@
 """Deterministic CLI for the mobench core (spec: benchmark-core 确定性命令行入口).
 
-Subcommands: run / validate / profile / memory / trace / env / stats / regression / power / report / prepare.
-Every subcommand supports --json stable output; failures exit non-zero.
+Subcommands: run / validate / profile / memory / trace / env / stats / regression / power / report / prepare / runs.
+Every subcommand except ``report`` supports --json stable output; failures exit non-zero.
 ``validate compare`` additionally returns 2 on a FAIL verdict (a gate, unlike
 the advisory regression report). Implementation of each command lives in its
 own module and is imported lazily so ``--help`` never pulls in optional
@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+
+from mobench import __version__
+from mobench.config import BUILTIN_ENGINES
 
 
 def _config_path_arg(parser, default="mobench.yml"):
@@ -86,11 +89,14 @@ def build_parser():
         prog="mobench",
         description="Generic engine benchmarking core (llama.cpp / MNN).",
     )
+    parser.add_argument("-V", "--version", action="version",
+                        version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("run", help="execute the full benchmark pipeline")
     _config_path_arg(p)
-    p.add_argument("--engine", help="override engine (llamacpp|mnn)")
+    p.add_argument("--engine",
+                   help=f"override engine ({'|'.join(BUILTIN_ENGINES)})")
     p.add_argument("--model", action="append", default=None, help="filter model ids")
     p.add_argument("--threads", type=int, help="override threads")
     p.add_argument("--rounds", type=int, help="override rounds")

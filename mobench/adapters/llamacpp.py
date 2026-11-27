@@ -363,7 +363,7 @@ def _strip_stream_tail(region):
 
 
 def _extract_json(text):
-    """Return parsed JSON object/array or None (whole-file or bracketed subset)."""
+    """Return parsed JSON object/array or None (whole-file or embedded subset)."""
     text = text.strip()
     try:
         obj = json.loads(text)
@@ -371,20 +371,21 @@ def _extract_json(text):
             return obj
     except json.JSONDecodeError:
         pass
-    # bracketed subset -- object
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end > start:
+    decoder = json.JSONDecoder()
+    idx = 0
+    length = len(text)
+    while idx < length:
+        next_arr = text.find("[", idx)
+        next_obj = text.find("{", idx)
+        candidates = [pos for pos in (next_arr, next_obj) if pos != -1]
+        if not candidates:
+            break
+        start = min(candidates)
         try:
-            return json.loads(text[start:end + 1])
+            obj, _end = decoder.raw_decode(text, start)
+            if isinstance(obj, (dict, list)):
+                return obj
         except json.JSONDecodeError:
             pass
-    # bracketed subset -- array (current llama.cpp `-o json`)
-    start = text.find("[")
-    end = text.rfind("]")
-    if start != -1 and end > start:
-        try:
-            return json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            return None
+        idx = start + 1
     return None

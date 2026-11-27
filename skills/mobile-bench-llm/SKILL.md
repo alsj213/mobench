@@ -5,7 +5,7 @@ description: Use when benchmarking LLM inference — decode tokens/s, prefill la
 
 # LLM 专项指标
 
-LLM 推理需要区分 prefill 与 decode、量化生成速度与首 token 延迟。规范见 `openspec/specs/benchmark-llm/spec.md`。
+LLM 推理需要区分 prefill 与 decode、量化生成速度与首 token 延迟；指标由 `mobench` 引擎适配器归一化产出并按参数矩阵汇总。
 
 ## 指标来源
 

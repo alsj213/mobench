@@ -5,7 +5,7 @@ description: Use when a benchmark experiment needs statistical rigor — warmup 
 
 # 测评方法学（多轮统计 · 环境 · 可复现性）
 
-正式测量需要统计可信、可复现、跨框架公平。本 skill 是 `agents/mobile-bench-agent.md` 7 步协议之上的统计/环境增强层，规范落地于 `openspec/specs/benchmark-methodology/spec.md`。
+正式测量需要统计可信、可复现、跨框架公平。本 skill 是 `agents/mobile-bench-agent.md` 7 步协议之上的统计/环境增强层，与 `mobench stats` / `env` / `report` 配合使用。
 
 ## 多轮统计与方差
 
@@ -16,12 +16,12 @@ python3 -m mobench stats results/records.jsonl        # mean/std/CV/P50/P90/P99
 python3 -m mobench report results/records.jsonl --out results/   # MD/HTML 报告
 ```
 
-- 轮次 < 5：stats 标注不足（不输出统计量）。
+- 轮次 < 5：`stats` 仍输出当前样本的统计数值，同时在报告中标记 `insufficient`（提示需 ≥5 轮用于正式统计，而非作为独立结论使用）。
 - CV > 5%：标注 `High variance (CV=xx%)`，提示检查降频/后台进程/环境控制。
 
-## 预热与冷启动
+## 预热与冷启动（实验方法论检查项）
 
-正式测量前做 warmup ≥ 10 次；首轮冷启动耗时不计入统计。warmup 次数从 `mobench.yml` / `--rounds` 读取，不得硬编码。不足 10 次时报告标注 `Warmup insufficient (< 10)`。
+正式测量前建议在被测引擎参数中配置充足 warmup（如 ≥ 10 次，或单独剔除首轮冷启动数据）；注意 warmup 校验由实验者或外部配置核查，并非 `mobench stats` 自动拦截——若 warmup 不足 10 次，请在最终实验报告中显式标注 `Warmup insufficient (< 10)`。
 
 ## 环境控制与状态检查
 
@@ -39,7 +39,7 @@ python3 -m mobench env --json
 
 - 跨引擎对比前对齐：线程数、精度、输入/上下文长度。
 - 锁定引擎与模型版本（`env` 快照中的 commit/version/MD5）。
-- 实际加速器与声明不符 → 报告标注 `Accelerator mismatch`。
+- 实际加速器与声明不符（人工核查原始运行日志或 `backend` 配置）→ 在实验报告中显式标注 `Accelerator mismatch`。
 - 功耗维度 → `mobile-bench-power`；跨 commit 回归 → `mobile-bench-regression`；长时间热稳定性 → `mobile-bench-thermal`。
 
 ## 数据真实性

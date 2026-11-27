@@ -12,9 +12,12 @@ import json
 import os
 import subprocess
 import sys
+import urllib.parse
 import urllib.request
 
 MODEL_EXTENSIONS = (".gguf", ".onnx", ".mnn", ".bin", ".param", ".llamafile")
+DEFAULT_DOWNLOAD_TIMEOUT = 60
+ALLOWED_URL_SCHEMES = ("http", "https")
 
 
 class PrepareError(Exception):
@@ -37,15 +40,30 @@ def _md5(path):
     return h.hexdigest()
 
 
-def download(url, dest):
-    """Stream ``url`` to ``dest`` using urllib (no third-party dep)."""
-    os.makedirs(os.path.dirname(os.path.abspath(dest)), exist_ok=True)
-    with urllib.request.urlopen(url) as resp, open(dest, "wb") as fh:
-        while True:
-            chunk = resp.read(1 << 20)
-            if not chunk:
-                break
-            fh.write(chunk)
+def download(url, dest, timeout=DEFAULT_DOWNLOAD_TIMEOUT):
+    """Stream ``url`` to ``dest`` atomically using urllib (http/https only)."""
+    scheme = urllib.parse.urlparse(url).scheme.lower()
+    if scheme not in ALLOWED_URL_SCHEMES:
+        raise PrepareError(
+            f"unsupported URL scheme {scheme!r}: only http/https allowed"
+        )
+    abs_dest = os.path.abspath(dest)
+    os.makedirs(os.path.dirname(abs_dest), exist_ok=True)
+    tmp_dest = f"{abs_dest}.part"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp, open(
+            tmp_dest, "wb"
+        ) as fh:
+            while True:
+                chunk = resp.read(1 << 20)
+                if not chunk:
+                    break
+                fh.write(chunk)
+        os.replace(tmp_dest, abs_dest)
+    except BaseException:
+        if os.path.exists(tmp_dest):
+            os.remove(tmp_dest)
+        raise
 
 
 def _convert_llama_cpp(cfg, model):

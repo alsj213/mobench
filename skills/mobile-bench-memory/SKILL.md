@@ -5,7 +5,7 @@ description: Use when analyzing inference memory usage — RSS/PSS reporting, na
 
 # 内存占用分析
 
-深入分析推理进程内存：区分 RSS 与 PSS、输出峰值与稳态、观察 native heap 增长并做泄漏判定。规范见 `openspec/specs/benchmark-memory/spec.md`。
+深入分析推理进程内存：区分 RSS 与 PSS、输出峰值与稳态、观察 native heap 增长并做泄漏判定。由 `mobench memory` 驱动真实采样与曲线生成。
 
 ## 命令化（`mobench memory`，adb）
 

@@ -1,9 +1,13 @@
+# Prefer installing via pyproject.toml:
+#   pip install -e .
+#   pip install -e ".[dev]"
+
 # mobench core runtime deps
 PyYAML>=6.0
 
 # Optional: statistical significance tests in `mobench regression`
 # (gracefully degrades to descriptive comparison when absent)
-scipy>=1.10
+# scipy>=1.10
 
 # Optional: MCP server (`python3 -m mobench.mcp_server`)
 # fastmcp>=3.2.4,<5
@@ -11,7 +15,7 @@ scipy>=1.10
 # Optional: Markdown -> HTML report utility (`scripts/md2report.py`)
 # markdown-it-py>=3
 
-# Test
-pytest>=8
-pytest-asyncio>=0.24
-pytest-cov>=5
+# Optional: Test & coverage (`pip install -e ".[dev]"`)
+# pytest>=8
+# pytest-asyncio>=0.24
+# pytest-cov>=5

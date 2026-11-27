@@ -218,11 +218,39 @@ def test_argv_report(capture_cmd):
 
 
 def test_argv_profile(capture_cmd):
-    """§4.1 后补项：profile 剖面工具（归因输入）。"""
+    """profile 剖面工具 argv 形状。"""
     mcp_server.profile("m.yml", ["--threads", "4", "--freq", "4000"])
     assert capture_cmd[0] == [sys.executable, "-m", "mobench", "profile",
                               "--config", "m.yml", "--threads", "4", "--freq", "4000",
                               "--json"]
+
+
+def test_argv_validate_and_compare_exit2_allowed(monkeypatch):
+    cmds = []
+
+    def fake_run(cmd, **kw):
+        cmds.append((list(cmd), kw))
+        return subprocess.CompletedProcess(
+            cmd, 2, stdout='{"verdict": "FAIL", "exit_code": 2}', stderr="")
+
+    monkeypatch.setattr(mcp_server.subprocess, "run", fake_run)
+    out = mcp_server.validate("compare", ["--baseline", "a.json", "--candidate", "b.json"])
+    assert cmds[0][0] == [sys.executable, "-m", "mobench", "validate", "compare",
+                          "--baseline", "a.json", "--candidate", "b.json", "--json"]
+    assert out["verdict"] == "FAIL"
+    assert out["exit_code"] == 2
+
+    with pytest.raises(ToolError, match="validate action"):
+        mcp_server.validate("bad")
+
+
+def test_run_cli_timeout_raises_tool_error(monkeypatch):
+    def fake_timeout(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, kw.get("timeout", 1))
+
+    monkeypatch.setattr(mcp_server.subprocess, "run", fake_timeout)
+    with pytest.raises(ToolError, match="超时"):
+        mcp_server._run_cli("run", ["--config", "m.yml"], timeout=1.0)
 
 
 def test_real_cli_accepts_generated_argv(tmp_path):
@@ -249,11 +277,12 @@ def test_real_cli_accepts_generated_argv(tmp_path):
         mcp_server.stats([str(junk_records)])
         mcp_server.regression("compare", ["--results", str(junk_records),
                                           "--baseline", str(tmp_path / "baseline.json")])
+        mcp_server.validate("run", ["--config", str(junk_yaml)])
         mcp_server.power(str(junk_yaml), str(junk_power))
         mcp_server.report([str(junk_records)])
         mcp_server.profile(str(junk_yaml))
 
-    assert len(cmds) == 7
+    assert len(cmds) == 8
     repo = Path(__file__).resolve().parents[1]
     for cmd in cmds:
         p = subprocess.run(cmd, capture_output=True, text=True, cwd=repo)

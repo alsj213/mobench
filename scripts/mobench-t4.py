@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
 """T4 档驱动：逐轮冷却 + mobench 原生流水线（模型只推一次）。
 
-T4 协议要求**每轮独立冷却、对齐起始温度**。MNN 对温度敏感：三轮连续运行会让
-设备从 34.5 °C 升到 49.2 °C，pp 由 193 衰减到 136 —— 未做轮间冷却的采集不可比
-（见 `docs/compare-qwen3-0.6b-llamacpp-vs-mnn.md` §1.3，以及
-`results/t4-pinlock-20260910/` 中那次因此被废弃的采集）。
+T4 协议要求**每轮独立冷却、对齐起始温度**。部分引擎对温度敏感：连续运行会
+导致设备升温触发明显热降频——未做轮间冷却的采集数据不可比。
 
-但 `mobench run` 没有轮间钩子；拆成 N 次调用又不行 —— adb 平台按**进程**缓存
-已推送的文件（`AdbPlatform._pushed` / `_synced`），每次调用都会重推整个模型。
-实测推送 19.5 MB/s，4B 档一次约 3 GB ≈ 2.5 min，5 轮就是十几分钟纯搬运。
+但 `mobench run` 本身只有开跑前的全局 `cooldown_c` 门禁，缺少逐轮之间等待
+冷却并在加载期失败重试的钩子；拆成 N 次独立调用又会触发重复推送——adb 平台
+按**进程**缓存已推送的文件（`AdbPlatform._pushed` / `_synced`），每次调用
+都会重推整个模型。对于 3 GB 级别的模型文件，5 轮重推会消耗大量无效搬运时间。
 
 本脚本在**同一进程**内跑完整条 `run_pipeline`（因此只推一次），仅给
 `AdbPlatform.run` 套一层「先等设备降到目标温度再执行」的前置。除冷却外一切走
 mobench 原生路径，records / run.json / tee 原始日志与 `mobench run` 完全一致；
 另在 run 目录落一份 `t4_conditions.json`，逐次尝试记录起始温度与退出码（红线 R3 可溯源）。
 
-引擎非零退出时按 `--max-attempts` 重试（默认 3）。需要重试的真实场景：MNN 4B
-档在**加载阶段**有约五成概率被 Android 的指针标记检查中止（rc=134，日志里只有
-一行 `Pointer tag … was truncated`），此时尚未产生任何测量输出，重试是干净数据。
+引擎非零退出时按 `--max-attempts` 重试（默认 3）。需要重试的真实场景：大模型在
+Android **加载阶段**偶发被指针标记检查中止（rc=134，日志里只有一行
+`Pointer tag … was truncated`），此时尚未产生任何测量输出，重试是干净数据。
 失败日志另存为 `<log>.failedN`，每次尝试都留在 `t4_conditions.json` 里。
 
 用法：
@@ -36,11 +35,15 @@ import subprocess
 import sys
 import time
 
-from mobench.adapters.base import AdapterError
-from mobench.config import ConfigError, load_config
-from mobench.platform.adb import AdbPlatform
-from mobench.platform.base import PlatformError
-from mobench.run import RunError, run_pipeline
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from mobench.adapters.base import AdapterError  # noqa: E402
+from mobench.config import ConfigError, load_config  # noqa: E402
+from mobench.platform.adb import AdbPlatform  # noqa: E402
+from mobench.platform.base import PlatformError  # noqa: E402
+from mobench.run import RunError, run_pipeline  # noqa: E402
 
 DEFAULT_TARGET_C = 35.0
 DEFAULT_TIMEOUT_S = 1800.0

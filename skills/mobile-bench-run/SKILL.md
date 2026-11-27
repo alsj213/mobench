@@ -15,13 +15,13 @@ description: Use when running inference performance benchmarks on a llama.cpp / 
 
 ## 前置
 
-1. 有基准入口 `mobench.yml`（schema 见 `schema/mobench.schema.json`），用 `--config <路径>` 显式定位——本机实例在 `<mobile-bench>/configs/local/`、模板在 `<mobile-bench>/configs/templates/`（分层见 `configs/README.md`）。字段含义与缺省值由 `mobench config` 载入；引擎 key：`llamacpp` / `mnn`。
+1. 有基准入口 `mobench.yml`（schema 见 `schema/mobench.schema.json`），用 `--config <路径>` 显式定位——本机实例在 `<mobench>/configs/local/`、模板在 `<mobench>/configs/templates/`（分层见 `configs/README.md`）。字段含义与缺省值由 `mobench` 配置模块载入；引擎 key：`llamacpp` / `mnn`。
 2. 平台握手：host 直接可用；adb 需设备在线。`platform.type: adb` 时预检失败会报错中止（红线 R5），不会"假设设备在线"。
 
 ## 驱动方式
 
 ```bash
-# 基准入口用 --config 显式定位（默认读 cwd 的 mobench.yml；以下从 <mobile-bench> 仓 cwd 跑）
+# 基准入口用 --config 显式定位（默认读 cwd 的 mobench.yml；以下从 <mobench> 仓 cwd 跑）
 CFG=configs/local/<档>.yml
 
 # 环境快照：平台身份/温度 + 引擎版本 + binary/model MD5（每字段带来源）

@@ -90,3 +90,11 @@ def test_flame_html_wraps_themed_document():
     assert doc.startswith("<!doctype html>")
     assert "flame" in doc
     assert "prefers-color-scheme: dark" in doc
+
+
+def test_flame_html_escapes_notes_and_title():
+    doc = flamegraph.flame_html("<svg/>", "<script>t</script>", "<img src=x onerror=alert(1)>")
+    assert "<script>" not in doc
+    assert "<img " not in doc
+    assert "&lt;script&gt;t&lt;/script&gt;" in doc
+    assert "&lt;img src=x onerror=alert(1)&gt;" in doc

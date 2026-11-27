@@ -91,16 +91,18 @@ pip install -e ".[dev]"          # 全部可选依赖 + pytest / pytest-cov
 验证安装：
 
 ```bash
+mobench --version                # 查看版本号
 mobench --help                   # 12 个子命令
 # 或 python3 -m mobench --help
 ```
 
 ### 作为 Claude Code 插件
 
-本仓库同时包含 Claude Code 插件定义（[`.claude-plugin/`](.claude-plugin/plugin.json)），提供领域 `skills/`、`agents/` 与数据真实性 `rules/`：
+本仓库同时包含 Claude Code 插件定义（[`.claude-plugin/`](.claude-plugin/plugin.json) 与 [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json)），提供领域 `skills/`、`agents/` 与数据真实性 `rules/`。在 Claude Code 中通过 marketplace 注册并安装：
 
-```bash
-claude plugins install https://github.com/alsj213/mobench
+```text
+/plugin marketplace add alsj213/mobench
+/plugin install mobench@mobench
 ```
 
 ## Configuration
@@ -142,7 +144,7 @@ results_dir: results
 
 ## Usage
 
-`mobench` 提供 **12 个确定性子命令**（均支持 `--json` 稳定输出，失败以非零码退出）：
+`mobench` 提供 **12 个确定性子命令**（支持 `--version` / `-V`；除 `report` 外均支持 `--json` 稳定输出，失败以非零码退出）：
 
 | 子命令 | 作用 |
 |--------|------|
@@ -150,8 +152,8 @@ results_dir: results
 | `env` | 环境快照：平台身份 + 温度 / 引擎版本 / binary 与 model MD5（每字段附来源命令） |
 | `run` | 完整基准流水线：preflight → 温度门禁 → 版本/哈希 → 模型检查 → 环境控制 → 执行（tee） → records |
 | `profile` | 性能剖面采样：host `perf` / adb `simpleperf`，产出火焰图、热点 top 与 IPC 统计 |
-| `memory` | 内存采样：在长序列运行期间轮询进程 RSS，输出内存曲线与峰值 |
-| `trace` | 频率追踪：采集运行期间的 `atrace` CPU 频率轨迹 |
+| `memory` | 内存采样（**当前仅支持 Android `adb`**）：在长序列运行期间轮询进程 RSS，输出内存曲线与峰值 |
+| `trace` | 频率追踪（**当前仅支持 Android `adb`**）：采集运行期间的 `atrace` CPU 频率轨迹 |
 | `stats <inputs…>` | 分组统计 mean / std / CV / P50 / P90 / P99，CV > 5% 自动告警 |
 | `report <inputs…> --format md\|html\|both\|chart` | 带来源标注的基准报告（高温 >45°C 自动打降频横幅）；`chart` 输出多面板基准图（支持 `--chart-by backend\|engine\|matrix`） |
 | `regression save\|compare` | 基线保存与跨 commit 回归对比（Mann-Whitney 显著性检验 + 阈值告警） |
@@ -210,7 +212,7 @@ mobench/                  # 确定性 Python 编排核心
 ├── report.py             #   Markdown / HTML / 多面板基准图生成
 ├── runs_index.py         #   results/ 历史运行索引
 ├── mcp_server.py         #   FastMCP stdio 工具面
-└── analysis/             #   stats / regression / correctness / power / compare_precision
+└── analysis/             #   stats / regression / correctness / power / compare_precision (Python Library API)
 configs/templates/        # 通用 YAML 配置模板（占位符）
 examples/                 # host / adb 快速上手配置示例
 schema/                   # mobench.schema.json
@@ -235,15 +237,16 @@ python3 -m mobench.mcp_server    # stdio 模式启动
 | 工具 | 参数 | 作用 |
 |------|------|------|
 | `env` | `config` | 环境快照：平台身份 + 温度 / 引擎版本 / binary 与 model MD5 |
-| `run` | `config`，可选 `expect_handoff` / `overrides` | 执行基准；指定 `expect_handoff` 时先校验二进制 MD5（fail-fast），匹配才开跑 |
+| `run` | `config`，可选 `expect_handoff` / `overrides` | 执行基准；`expect_handoff` 指向含 `{"binary_md5": "<md5>"}` 的清单 JSON，开跑前校验实测二进制 MD5（fail-fast） |
 | `profile` | `config`，可选 `extra` | 性能剖面采样（`flamegraph` / `top` / IPC） |
 | `stats` | `inputs: list[str]`，可选 `extra` | 分组统计（records 文件或目录） |
 | `regression` | `action`（`save`/`compare`），可选 `extra` | 基线保存与显著性回归对比 |
+| `validate` | `action`（`run`/`compare`），可选 `extra` | 精度校验门禁；`compare` 在 `FAIL`（退出码 `2`）时仍返回结构化判定 JSON |
 | `power` | `config` + `source`，可选 `extra` | 能耗 / perf-per-Watt 分析 |
 | `report` | `inputs: list[str]`，可选 `out` / `extra` | 生成 Markdown / HTML / 图表报告工件 |
 | `runs` | 可选 `results`（默认 `"results"`） | 扫描 `results/` 目录返回已完成运行的索引表 |
 
-客户端注册示例见 [`docs/mcp.example.json`](docs/mcp.example.json)。
+客户端注册示例见 [`docs/mcp.example.json`](docs/mcp.example.json)。安全与本地信任边界说明见 [`SECURITY.md`](SECURITY.md)。
 
 ## Extending to a new engine
 
