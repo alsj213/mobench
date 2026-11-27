@@ -1,6 +1,6 @@
 # 模板 — MNN · qwen3-0.6b host(Linux x86) 剖析档
 # 用法: 替换 <占位符> 另存到 configs/local/ 后
-#   cd <mobile-bench> && python3 -m mobench profile --config configs/local/<档>.yml --threads <N> --json
+#   cd <mobench> && python3 -m mobench profile --config configs/local/<档>.yml --threads <N> --json
 # 被测产物: MNN fork host 现编 build_host_llm（x86 llm_bench, 静态链 libMNN.a）
 # 前置: 主机需装 linux-tools（perf）; WSL 内核需从 linux-tools-*/ 取 perf 二进制
 engine: mnn
@@ -39,4 +39,4 @@ methodology:
   env_control: auto
   thermal: true
 
-results_dir: results/mnn-host            # 相对运行 cwd（<mobile-bench>）；已在 .gitignore 忽略
+results_dir: results/mnn-host            # 相对运行 cwd（<mobench>）；已在 .gitignore 忽略

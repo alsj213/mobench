@@ -367,3 +367,25 @@ def test_flash_attn_unquoted_yaml_bool_normalized(tmp_path):
 
     # Assert
     assert cfg["workload"]["flash_attn"] == "off"
+
+
+def test_schema_validates_all_repo_examples_and_templates():
+    import glob
+    import json
+    from pathlib import Path
+    import yaml
+
+    jsonschema = pytest.importorskip("jsonschema")
+    repo = Path(__file__).resolve().parents[1]
+    schema = json.loads((repo / "schema" / "mobench.schema.json").read_text(encoding="utf-8"))
+    jsonschema.Draft7Validator.check_schema(schema)
+
+    files = sorted(
+        list(repo.glob("examples/**/*.yml")) + list((repo / "configs" / "templates").glob("*.yml"))
+    )
+    assert files
+    for path in files:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        jsonschema.validate(instance=data, schema=schema)
+        cfg = load_config(str(path))
+        assert cfg["engine"] in BUILTIN_ENGINES

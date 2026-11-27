@@ -15,9 +15,9 @@
 - 用 **`--config <路径>`** 显式定位，可在任意 cwd 执行：
 
 ```bash
-cd <mobile-bench 仓>                                    # 本机实例的 results_dir 相对此 cwd
-PYTHONPATH=<mobile-bench 仓> python3 -m mobench prepare --config configs/local/<档>.yml
-PYTHONPATH=<mobile-bench 仓> python3 -m mobench run     --config configs/local/<档>.yml --json
+cd <mobench 仓>                                    # 本机实例的 results_dir 相对此 cwd
+PYTHONPATH=<mobench 仓> python3 -m mobench prepare --config configs/local/<档>.yml
+PYTHONPATH=<mobench 仓> python3 -m mobench run     --config configs/local/<档>.yml --json
 ```
 
 - `build.source_dir` 仍指向**被测引擎仓**（git commit 溯源不受 config 位置影响）。
@@ -62,7 +62,7 @@ sed -e 's#<ADB_EXE>#/path/to/adb#' \
 
 绝不**部分占用**某个簇——同簇线程与跨簇线程频率不一致，正是绑核要消除的噪声。
 
-**失败分级**（按成因，见 `openspec/changes/add-cpu-pin-lockfreq/`）：
+**失败分级**（按成因，实现见 `mobench/platform/base.py` 与 `mobench/platform/cpu.py`）：
 
 - **配置错误**（显式 `pin_cpus` 含不存在的核号、格式非法）→ **中止测量**
 - **环境不支持**（平台无 cpufreq，如 WSL2）→ **降级不绑核并打标**，测量照常；显式指定 `pin_cpus` 时仍会正常绑核
@@ -79,9 +79,9 @@ methodology:
   pin_cpus: "7"
 ```
 
-## CC 插件读取规则
+## 插件读取规则
 
 - **mobench 核心是插件；config 是数据，不属于插件缓存副本**（`~/.claude/plugins/cache/.../<ver>/` 会被重装覆盖）。
-- 会话内引用 config 一律指向 **mobile-bench 源仓** 的 `configs/`：本仓 cwd 用相对路径；跨目录用绝对路径；本工作区约定源仓为 `~/project/mobile-bench`。
+- 会话内引用 config 一律指向 **mobench 源仓** 的 `configs/`：本仓 cwd 用相对路径；跨目录用绝对路径。
 - 插件技能/agent 装载到别机时，随插件分发的是 `configs/templates/`；`configs/local/` 需按上节实例化后才可 `run`。
 - 运行产物（records/results）落 cwd 下 `results/`，已在根 `.gitignore` 忽略。

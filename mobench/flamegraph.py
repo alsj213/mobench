@@ -111,5 +111,5 @@ font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC",s
 .wrap{{max-width:1200px;margin:0 auto;padding:28px 20px 60px}}
 h1{{font-size:22px;margin:0 0 4px}} p{{color:var(--mut);margin:2px 0 14px}}
 </style>
-<div class="wrap"><h1>{html.escape(title)}</h1><p>{notes}</p>{svg}</div>
+<div class="wrap"><h1>{html.escape(title)}</h1><p>{html.escape(notes)}</p>{svg}</div>
 </html>"""

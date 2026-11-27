@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """docs/*.md → 自包含 HTML 报告。
 
-沿用 `docs/archive/compare-qwen3-0.6b-adb-overview.html` 的设计语言：
-暖中性底色 + 引擎强调色 + 卡片/结论框/胶囊比值，light/dark 双主题，无外部依赖。
+设计风格：暖中性底色 + 引擎强调色 + 卡片/结论框/胶囊比值，light/dark 双主题，无外部依赖。
 
 用法：
     python3 scripts/md2report.py docs/               # 转换 docs/ 下所有带 HTML 孪生的 md
@@ -87,7 +86,7 @@ def _render_chart(spec: str) -> str:
                 for i, (_, v) in enumerate(vs))
             shown = " / ".join(raw for raw, _ in vs)
             body.append(f'<div class="chartrow"><div class="clab">{html.escape(label)}</div>'
-                        f'<div class="bars">{bars}</div><div class="cval">{shown}</div></div>')
+                        f'<div class="bars">{bars}</div><div class="cval">{html.escape(shown)}</div></div>')
             values.extend(raw for raw, _ in vs)
         head = (f'<p class="cgtitle"><span>{html.escape(gname)}</span>'
                 f'<span class="cmax">满尺 {top:g}</span></p>') if gname else ""
@@ -102,7 +101,7 @@ def _render_chart(spec: str) -> str:
         lgd = f'<div class="lgd">{sw}</div>'
 
     head = f'<p class="ctitle">{html.escape(title)}</p>' if title else ""
-    return (f'<div class="chart" data-values="{" ".join(values)}">'
+    return (f'<div class="chart" data-values="{html.escape(" ".join(values), quote=True)}">'
             f'{head}{"".join(rows_html)}{lgd}</div>\n')
 
 

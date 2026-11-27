@@ -326,3 +326,80 @@ def test_sample_thermal_combines_temp_and_freq(monkeypatch):
     sample = platform.sample_thermal()
     assert sample["temp_c"]["value"] == 40.0
     assert sample["cpu_freq"]["value_mhz"] == 2000.0
+
+
+def test_deploy_parts_quotes_spaces_and_metacharacters(tmp_path, monkeypatch):
+    # Arrange: paths and cli_args containing spaces / shell metacharacters
+    bin_dir = tmp_path / "android bin"
+    bin_dir.mkdir()
+    bench = bin_dir / "llama-bench"
+    bench.write_text("x", encoding="utf-8")
+    model = tmp_path / "my model;id.gguf"
+    model.write_bytes(b"GGUF")
+    cfg = make_cfg()
+    cfg["build"] = {"bin_dir": str(bin_dir), "bench_bin": "llama-bench"}
+    plat = AdbPlatform(cfg)
+    monkeypatch.setattr(plat, "_sync_dir", lambda d, tag, chmod_exec=False: "/data/local/tmp/mobench/" + tag)
+    monkeypatch.setattr(plat, "_push", lambda p: "/data/local/tmp/mobench/my model;id.gguf")
+
+    # Act
+    shell_cmd = plat._deploy_command([str(bench), "-m", str(model), "--note", "a b;rm -rf /"])
+
+    # Assert: arguments with spaces/metacharacters are shell-quoted
+    assert "'/data/local/tmp/mobench/my model;id.gguf'" in shell_cmd
+    assert "'a b;rm -rf /'" in shell_cmd
+
+
+def test_spawn_trace_formats_space_separated_categories_and_rejects_injection(monkeypatch):
+    plat = AdbPlatform(make_cfg())
+    popens = []
+
+    def fake_popen(cmd, **kwargs):
+        popens.append(cmd)
+        return object()
+
+    monkeypatch.setattr(adb_mod.subprocess, "Popen", fake_popen)
+
+    # Comma or space-separated categories become space-separated args for atrace
+    plat.spawn_trace(10, cats="freq,sched", out_remote="/data/local/tmp/mobench/a trace.txt")
+    shell_str = popens[-1][-1]
+    assert "atrace -b 16384 -t 10 freq sched > '/data/local/tmp/mobench/a trace.txt' 2>&1" == shell_str
+
+    plat.spawn_trace(5, cats=["freq", "idle"])
+    assert "atrace -b 16384 -t 5 freq idle > /data/local/tmp/mobench/atrace.txt 2>&1" == popens[-1][-1]
+
+    # Injection attempt rejected
+    with pytest.raises(PlatformError, match="invalid atrace"):
+        plat.spawn_trace(5, cats="freq;rm -rf /")
+
+
+def test_run_profiled_rejects_invalid_perf_event(tmp_path, monkeypatch):
+    plat = AdbPlatform(make_cfg())
+    monkeypatch.setattr(plat, "_deploy_parts", lambda cmd: ("cd /data/local/tmp/mobench && ", "./llm_bench"))
+
+    class Proc:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr(plat, "_exec", lambda args, timeout=120: Proc())
+
+    with pytest.raises(PlatformError, match="invalid perf event"):
+        plat.run_profiled(["./llm_bench"], events=["cpu-cycles;id"])
+
+
+def test_remote_helpers_quote_arguments(monkeypatch):
+    plat = AdbPlatform(make_cfg())
+    seen = []
+
+    def fake_shell(cmd, timeout=120):
+        seen.append(cmd)
+        return 0, "123\n"
+
+    monkeypatch.setattr(plat, "_shell", fake_shell)
+    assert plat.pidof("my bench;id") == "123"
+    assert plat.read_proc_status("123;id") == "123\n"
+    assert plat.read_remote_file("/data/local/tmp/a b.txt") == "123\n"
+    assert seen[0] == ["pidof 'my bench;id'"]
+    assert seen[1] == ["cat '/proc/123;id/status'"]
+    assert seen[2] == ["cat '/data/local/tmp/a b.txt'"]

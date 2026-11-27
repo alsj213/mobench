@@ -1,14 +1,14 @@
 # 模板 — MNN · qwen3-0.6b 长序列公平对比档（p512/g512 · t4 · r5）
 # 与 llamacpp-qwen3-0.6b-p512g512.yml 严格同源同精度（q4_k_m），真机对比用。
 # 用法: 替换 <占位符> 另存到 configs/local/ 后
-#   cd <mobile-bench> && python3 -m mobench run --config configs/local/<档>.yml
-# 被测产物: MNN fork NDK 现编 build_android_llm_arm64（llm_bench + libMNN/libllm.so）
+#   cd <mobench> && python3 -m mobench run --config configs/local/<档>.yml
+# 被测产物: MNN NDK 现编 build_android_llm_arm64（llm_bench + libMNN/libllm.so）
 engine: mnn
 
 platform:
   type: adb
-  adb: "<ADB_EXE>"                    # Windows adb.exe（WSL 经 interop 直接调用）
-  device_id: "<DEVICE_ID>"            # 真机（如小米10 / M2007J3SC）
+  adb: "<ADB_EXE>"                    # 本机 adb，或 WSL 下经 interop / tools/adb-unc-wrapper.sh 调用
+  device_id: "<DEVICE_ID>"            # Android 真机序列号（见 adb devices）
 
 build:
   bin_dir: "<FORK_BIN_DIR>"           # llm_bench + 3 件 so 所在目录
@@ -41,4 +41,4 @@ methodology:
   env_control: auto
   thermal: true
 
-results_dir: results/mnn-p512g512         # 相对运行 cwd（<mobile-bench>）；已在 .gitignore 忽略
+results_dir: results/mnn-p512g512         # 相对运行 cwd（<mobench>）；已在 .gitignore 忽略

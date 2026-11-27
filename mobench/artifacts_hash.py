@@ -1,13 +1,12 @@
-"""Artifact-set hashing for I6 anchoring (engopt handoff ↔ mobench env/run).
+"""Artifact-set hashing for binary + shared-library integrity anchoring.
 
-The measured engine binary is a thin dynamic loader: the kernels and CPU code
-actually under test live in shared libraries next to it. Hashing the executable
-alone cannot detect kernel changes (observed in M3: identical llama-bench md5
-across two completely different q4_K kernels). The artifact-set hash therefore
-covers the binary plus every ``*.so`` in the same directory, by name and content.
+The measured engine binary is often a thin dynamic loader: the kernels and
+CPU code actually under test live in shared libraries next to it. Hashing
+the executable alone cannot detect kernel changes in adjacent ``*.so`` files.
+The artifact-set hash therefore covers the binary plus every ``*.so`` in the
+same directory, sorted by filename and hashed by name and content.
 
-Wire format (MUST stay byte-identical with engopt's
-``src/engopt/adapters/llamacpp.py::binary_info``):
+Wire format::
 
     md5( concat( for f in [binary] + sorted(same_dir/*.so):
                      utf8(f.name) + ascii(hex(md5(f))) ) )

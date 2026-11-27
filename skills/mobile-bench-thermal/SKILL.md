@@ -5,7 +5,7 @@ description: Use when assessing thermal stability and throttling under sustained
 
 # 热稳定性与降频（Soak test）
 
-评估持续负载下的热稳定性，量化降频对性能的影响（仿 AI Benchmark throttling 测试）。规范见 `openspec/specs/benchmark-thermal/spec.md`。
+评估持续负载下的热稳定性，量化降频对性能的影响（仿 AI Benchmark throttling 测试），基于 `mobench run` 时间序列与 `mobench env` 温度快照执行判读。
 
 ## 方法
 

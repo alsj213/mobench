@@ -1,8 +1,12 @@
 """CLI surface tests (benchmark-core 确定性命令行入口)."""
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
+from mobench import __version__
 from mobench.cli import build_parser, main
 
 
@@ -15,8 +19,26 @@ def test_help_lists_all_subcommands(capsys):
         parser.parse_args(["--help"])
     out = capsys.readouterr().out
     assert ei.value.code == 0
-    for cmd in ("run", "env", "stats", "regression", "power", "report", "prepare"):
+    for cmd in ("run", "profile", "memory", "trace", "env", "stats",
+                "regression", "validate", "power", "report", "prepare", "runs"):
         assert cmd in out
+
+
+def test_cli_version_flag(capsys):
+    code = main(["--version"])
+    assert code == 0
+    out = capsys.readouterr().out.strip()
+    assert out == f"mobench {__version__}"
+
+
+def test_python_m_mobench_version_subprocess():
+    repo = Path(__file__).resolve().parents[1]
+    proc = subprocess.run(
+        [sys.executable, "-m", "mobench", "--version"],
+        capture_output=True, text=True, cwd=repo,
+    )
+    assert proc.returncode == 0
+    assert proc.stdout.strip() == f"mobench {__version__}"
 
 
 def test_unknown_command_fails(capsys):

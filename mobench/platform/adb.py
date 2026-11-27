@@ -8,6 +8,7 @@ best-effort and degrades when the device shell is not root.
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import subprocess
 import time
@@ -17,6 +18,10 @@ from mobench.platform.cpu import parse_policies
 
 REMOTE_DIR = "/data/local/tmp/mobench"
 CPUFREQ_DIR = "/sys/devices/system/cpu/cpufreq"
+
+_POLICY_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+_ATRACE_CAT_RE = re.compile(r"^[A-Za-z0-9_:-]+$")
+_PERF_EVENT_RE = re.compile(r"^[A-Za-z0-9_.:/-]+$")
 
 # adb push 的固定 120 s 只够推约 2.3 GB（实测 19.5 MB/s），而 4B q4_k_m 经
 # gguf2mnn 重建后单个权重文件就有 3.2 GB —— 必然超时中断。按体积放大超时，
@@ -197,12 +202,17 @@ class AdbPlatform(BasePlatform):
             return False, restored_from
         failure = None
         for policy in policies:
+            if not _POLICY_NAME_RE.match(policy.name):
+                failure = f"invalid policy name {policy.name!r}"
+                continue
             path = self._governor_path(policy.name)
             rc, original = self._shell(["cat", path], timeout=60)
             if rc != 0:
                 failure = f"cannot read {path}"
                 continue
-            proc = self._su_shell(f"echo {GOVERNOR} > {path}")
+            proc = self._su_shell(
+                f"echo {shlex.quote(GOVERNOR)} > {shlex.quote(path)}"
+            )
             if proc.returncode != 0:
                 failure = ((proc.stderr or proc.stdout) or "").strip() or \
                     f"cannot write {path}"
@@ -231,7 +241,11 @@ class AdbPlatform(BasePlatform):
     def restore(self) -> None:
         """Return every touched governor to its recorded original value."""
         for name, original in list(self._freq_state.items()):
-            self._su_shell(f"echo {original} > {self._governor_path(name)}")
+            if not _POLICY_NAME_RE.match(name):
+                continue
+            self._su_shell(
+                f"echo {shlex.quote(original)} > {shlex.quote(self._governor_path(name))}"
+            )
         self._freq_state = {}
         self._pin_cpus, self._pin_prefix = [], []
 
@@ -265,7 +279,7 @@ class AdbPlatform(BasePlatform):
         if tag in self._synced:
             return self._synced[tag]
         remote = REMOTE_DIR + "/" + tag
-        self._shell(["mkdir", "-p", remote])
+        self._shell([f"mkdir -p {shlex.quote(remote)}"])
         for name in sorted(os.listdir(local_dir)):
             if name.startswith("."):
                 continue
@@ -274,7 +288,7 @@ class AdbPlatform(BasePlatform):
                 continue
             self._push_file(path, remote + "/" + name)
         if chmod_exec:  # adb push resets the exec bit
-            self._shell(["chmod", "755", remote + "/*"])
+            self._shell([f"chmod 755 {shlex.quote(remote)}/*"])
         self._synced[tag] = remote
         return remote
 
@@ -322,9 +336,12 @@ class AdbPlatform(BasePlatform):
             remote_cmd.append(self._map_arg(arg0))
         for arg in cmd[1:]:
             remote_cmd.append(self._map_arg(arg))
-        env_prefix = ("cd %s && LD_LIBRARY_PATH=. " % (REMOTE_DIR + "/bin")
-                      if in_bin_dir else "cd %s && " % REMOTE_DIR)
-        return env_prefix, " ".join(remote_cmd)
+        env_prefix = (
+            f"cd {shlex.quote(REMOTE_DIR + '/bin')} && LD_LIBRARY_PATH=. "
+            if in_bin_dir
+            else f"cd {shlex.quote(REMOTE_DIR)} && "
+        )
+        return env_prefix, " ".join(shlex.quote(str(a)) for a in remote_cmd)
 
     def _pinned_body(self, body):
         """Prefix a remote command with the CPU pin.
@@ -332,7 +349,7 @@ class AdbPlatform(BasePlatform):
         One place applies the measurement condition, so run / profile / memory
         all execute under the same one (design D5).
         """
-        prefix = " ".join(self._pin_prefix)
+        prefix = " ".join(shlex.quote(str(p)) for p in self._pin_prefix)
         return (prefix + " " + body) if prefix else body
 
     def _deploy_command(self, cmd):
@@ -366,25 +383,35 @@ class AdbPlatform(BasePlatform):
 
     def pidof(self, name):
         """Device pid(s) for a process name ('' when not running)."""
-        rc, out = self._shell(["pidof", name], timeout=60)
+        rc, out = self._shell([f"pidof {shlex.quote(str(name))}"], timeout=60)
         return out.strip() if rc == 0 else ""
 
     def read_proc_status(self, pid):
         """Return /proc/<pid>/status text, or None once the process is gone."""
-        rc, out = self._shell(["cat", "/proc/%s/status" % pid], timeout=60)
+        remote = f"/proc/{pid}/status"
+        rc, out = self._shell([f"cat {shlex.quote(remote)}"], timeout=60)
         return out if rc == 0 else None
 
     # -- system trace (atrace) -------------------------------------------
     def spawn_trace(self, dur, cats="freq", out_remote=None):
         """Start a device atrace capture into a remote file (non-blocking)."""
         out_remote = out_remote or REMOTE_DIR + "/atrace.txt"
-        cmd = "atrace -b 16384 -t %d %s > %s 2>&1" % (int(dur), cats, out_remote)
+        if isinstance(cats, str):
+            cat_list = [c for c in re.split(r"[\s,]+", cats.strip()) if c]
+        else:
+            cat_list = [str(c).strip() for c in (cats or []) if str(c).strip()]
+        if not cat_list or any(not _ATRACE_CAT_RE.match(c) for c in cat_list):
+            raise PlatformError(f"invalid atrace categories: {cats!r}")
+        cats_str = " ".join(shlex.quote(c) for c in cat_list)
+        cmd = "atrace -b 16384 -t %d %s > %s 2>&1" % (
+            int(dur), cats_str, shlex.quote(out_remote)
+        )
         return subprocess.Popen(
             self._adb_base() + ["shell", cmd],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def read_remote_file(self, remote, timeout=240):
-        rc, out = self._shell(["cat", remote], timeout=timeout)
+        rc, out = self._shell([f"cat {shlex.quote(remote)}"], timeout=timeout)
         return out if rc == 0 else ""
 
     # -- profiling (simpleperf) ------------------------------------------
@@ -398,17 +425,22 @@ class AdbPlatform(BasePlatform):
         """
         env_prefix, body = self._deploy_parts(cmd)
         perf_remote = REMOTE_DIR + "/perf.data"
+        mmap_flag = f"-m {int(mmap_pages)}" if mmap_pages else ""
         rec = (env_prefix
                + "simpleperf record -f %d %s -o %s -g -- %s"
-               % (freq,
-                  "-m %d" % mmap_pages if mmap_pages else "",
-                  perf_remote, self._pinned_body(body)))
+               % (int(freq),
+                  mmap_flag,
+                  shlex.quote(perf_remote), self._pinned_body(body)))
         rec_proc = self._exec(["shell", rec], timeout=timeout)
         stat_text = ""
         if events:
+            event_list = [str(ev) for ev in events]
+            for ev in event_list:
+                if not _PERF_EVENT_RE.match(ev):
+                    raise PlatformError(f"invalid perf event name: {ev!r}")
             stat = (env_prefix
                     + "simpleperf stat -e %s -- %s"
-                    % (",".join(events), self._pinned_body(body)))
+                    % (shlex.quote(",".join(event_list)), self._pinned_body(body)))
             stat_proc = self._exec(["shell", stat], timeout=timeout)
             stat_text = (stat_proc.stdout or "") + (stat_proc.stderr or "")
         hint = ""

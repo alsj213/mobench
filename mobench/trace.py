@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import csv
 import datetime
+import html
 import json
 import os
 import re
@@ -102,7 +103,7 @@ def _html(meta, per_cpu, out_dir) -> str:
     return f"""<!doctype html><html><meta charset="utf-8"><title>freq trace</title>
 <style>body{{margin:0;background:#eef1f6;color:#17202f;font:14px/1.5 -apple-system,"Segoe UI",Roboto,"PingFang SC",sans-serif}}
 .wrap{{max-width:820px;margin:0 auto;padding:24px 18px 50px}}</style>
-<div class="wrap"><h1>CPU 频率 · {meta['engine']} · {meta['model']} t{meta['threads']}</h1>
+<div class="wrap"><h1>CPU 频率 · {html.escape(str(meta['engine']))} · {html.escape(str(meta['model']))} t{html.escape(str(meta['threads']))}</h1>
 <p style="color:#5a6577">n_freq={meta.get('n_freq_events')}（采样窗含 idle; 低频占比参考用）</p>
 <svg viewBox="0 0 760 140" style="max-width:100%">{lines}</svg></div></html>"""
 
@@ -194,7 +195,7 @@ def main(args) -> int:
     try:
         cfg = load_config(args.config)
         meta = trace_pipeline(cfg, model_id=args.model, threads=args.threads,
-                              dur=args.dur, cats=",".join(args.atrace_cats),
+                              dur=args.dur, cats=" ".join(args.atrace_cats),
                               prompt=args.prompt, gen=args.gen,
                               json_mode=args.json)
     except (ConfigError, AdapterError, PlatformError, RuntimeError) as exc:

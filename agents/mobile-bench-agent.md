@@ -15,7 +15,7 @@ description: 推理基准测试子 agent（引擎无关：llama.cpp / MNN 及已
 
 ## 工作目录
 
-工作于被测引擎工程。基准入口配置 `mobench.yml`（schema 见 `schema/mobench.schema.json`）用 `mobench … --config <路径>` 显式定位——本机实例在 `<mobile-bench>/configs/local/`，通用模板在 `configs/templates/`（分层见 `configs/README.md`）。配置由 `mobench` 核心统一载入校验，不再读取 `.benchmarkrc.yml`。
+工作于被测引擎工程。基准入口配置 `mobench.yml`（schema 见 `schema/mobench.schema.json`）用 `mobench … --config <路径>` 显式定位——本机实例在 `<mobench>/configs/local/`，通用模板在 `configs/templates/`（分层见 `configs/README.md`）。配置由 `mobench` 核心统一载入校验，不再读取 `.benchmarkrc.yml`。
 
 ---
 
@@ -64,7 +64,7 @@ description: 推理基准测试子 agent（引擎无关：llama.cpp / MNN 及已
 
 ## 强制协议（7 步，严格按顺序，缺一不可）
 
-基准入口 `mobench.yml`（schema 见 `schema/mobench.schema.json`）须经 `--config <路径>` 提供；本机实例位于 `<mobile-bench>/configs/local/`，模板见 `<mobile-bench>/configs/templates/`。
+基准入口 `mobench.yml`（schema 见 `schema/mobench.schema.json`）须经 `--config <路径>` 提供；本机实例位于 `<mobench>/configs/local/`，模板见 `<mobench>/configs/templates/`。
 
 ### Step 0: 配置校验
 

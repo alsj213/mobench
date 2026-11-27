@@ -1,10 +1,10 @@
 """Index of completed runs: one compact row per run.json under results/.
 
-Conversation-scenario need: with dozens of run dirs scattered across
-``results/``, answering "which run was which arm, built with what recipe,
-in what audit state" meant manual digging every time. This scans run.json
-files and emits a stable index (aligned table, or ``--json`` for machine
-consumption — e.g. an engopt evidence reference or an A/B pair lookup).
+With dozens of run dirs scattered across ``results/``, answering "which run
+was which variant, built with what recipe, in what audit state" meant manual
+digging every time. This scans run.json files and emits a stable index
+(aligned table, or ``--json`` for machine consumption — e.g. an evidence
+reference or an A/B pair lookup).
 
 Fields carried per row: timestamp, engine, label, artifact md5, record
 count, build-recipe verification, log-probe audit state, throttle flag.

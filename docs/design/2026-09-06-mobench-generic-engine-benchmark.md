@@ -1,7 +1,9 @@
 # mobench v0.4 —— 通用引擎评测核心 设计文档
 
+> **历史设计文档说明**：本文记录了 `mobench` 从早期插件架构重构为通用引擎评测核心（v0.4）时的初始设计方案；当前实际代码已演进至 v0.9.0，具体子命令、配置字段与实现细节请以 [`README.md`](../../README.md) 与 [`schema/mobench.schema.json`](../../schema/mobench.schema.json) 为准。
+
 - 日期: 2026-09-06
-- 状态: 待评审（评审通过后转 OpenSpec 变更）
+- 状态: 历史设计归档（v0.4 初始设计）
 - 关联仓库: mobench（Claude Code 插件与 Python 核心）
 
 ## 1. 背景与动机
@@ -225,5 +227,5 @@ results_dir: results
 ## 11. 后续动作
 
 1. 本设计评审通过。
-2. 以 OpenSpec change 形式产出（proposal / design / delta specs / tasks），`openspec validate` 校验。
+2. 拆解为可执行需求清单与验收用例（`schema/mobench.schema.json` + 单元测试）。
 3. 规划分阶段实现（先 records+config+llamacpp/host 最小闭环，再 mnn、adb、analysis 迁移、skills/agent 重写）。

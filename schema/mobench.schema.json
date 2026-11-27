@@ -51,6 +51,37 @@
         },
         "bench_bin": {
           "type": "string"
+        },
+        "required_cmake_args": {
+          "type": "string",
+          "description": "CMake -DKEY=VALUE flags that mobench run verifies against CMakeCache.txt in the build tree."
+        }
+      }
+    },
+    "llamacpp": {
+      "type": "object",
+      "properties": {
+        "output": {
+          "type": "string",
+          "description": "Override llama-bench JSON output flag (e.g. '--json' for legacy builds)."
+        },
+        "backend": {
+          "type": "string",
+          "description": "Backend label recorded into benchmark records (e.g. 'cpu', 'metal')."
+        }
+      }
+    },
+    "mnn": {
+      "type": "object",
+      "properties": {
+        "backend": {
+          "type": "string",
+          "description": "MNN llm_bench -a backend selector (e.g. 'cpu', 'opencl')."
+        },
+        "n_repeat": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Inner repeat count (-rep) passed to MNN llm_bench."
         }
       }
     },
@@ -117,6 +148,42 @@
         "batch": {
           "type": "integer",
           "minimum": 1
+        },
+        "n_depth": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Context depth (-d) passed to llama-bench."
+        },
+        "cache_type_k": {
+          "type": "string",
+          "description": "KV cache K quantization type (-ctk) passed to llama.cpp tools."
+        },
+        "cache_type_v": {
+          "type": "string",
+          "description": "KV cache V quantization type (-ctv) passed to llama.cpp tools."
+        },
+        "flash_attn": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": [
+                "on",
+                "off",
+                "auto"
+              ]
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "description": "Flash-attention setting (-fa) passed to llama.cpp tools."
+        },
+        "cli_args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Extra CLI flags passed verbatim to the engine benchmark tool."
         }
       }
     },
@@ -161,11 +228,53 @@
           "default": true,
           "description": "Pin the cpufreq policies covering the selected CPUs to the performance governor (default true). Failure degrades to a labelled warning."
         },
+        "cooldown_c": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "description": "Optional pre-run cooldown target temperature in Celsius (hottest thermal zone)."
+        },
+        "cooldown_max_s": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 600,
+          "description": "Maximum seconds to wait during the pre-run cooldown gate."
+        },
+        "freq_floor_mhz": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "description": "Optional post-round minimum CPU frequency threshold in MHz; lower readings mark freq_audit.valid=false."
+        },
+        "log_checks": {
+          "type": "object",
+          "properties": {
+            "forbid": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "expect": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "Regex probes run over each round's raw log (forbid aborts immediately; missing expect flags log_audit)."
+        },
         "power": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Reserved documentation flag indicating power analysis intent."
         },
         "thermal": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Reserved documentation flag indicating thermal monitoring intent."
         }
       }
     },

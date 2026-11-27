@@ -1,25 +1,26 @@
-"""mobench MCP 工具面：法官侧唯一入口——判决只从这里出（spec I1）。
+"""mobench MCP 工具面：面向 AI Agent 的可审计、fail-fast 基准测试入口。
 
 薄包装：全部经 `python -m mobench <verb> …` 子进程执行，mobench 核心零改动。
-每个 verb 的 argv 按**真身 CLI 形状**逐 verb 拼装（不再套统一模板）：
-`env/run/power --config …`、`stats/report inputs…`、`regression {save,compare} …`；
-`--json` 由 `_run_cli` 统一追加末尾（`report` 真身无此旗标，返回 stdout 原文）。
-红线机械化：
+每个 verb 的 argv 按**真实 CLI 形状**逐 verb 拼装：
+`env/run/power --config …`、`stats/report inputs…`、`regression {save,compare} …`、
+`validate {run,compare} …`；
+`--json` 由 `_run_cli` 统一追加末尾（`report` 无此旗标，返回 stdout 原文）。
+数据可信红线机械化：
 - 没有「读旧数据」工具；run 每次都是新子进程（R2/R11）
 - 输出即证据（source_log/哈希都在 CLI JSON 里，R3/R9/R10）
 - 失败不吞：非零退出带 stderr 原样抛给调用方（R4）
-- I6 锚定：expect_handoff 时**先**校验实测二进制 MD5 与 handoff 一致，通过才开跑（fail fast）
+- 制品锚定：expect_handoff 时**先**校验实测二进制 MD5 与清单文件一致，通过才开跑（fail fast）
 
 并发语义（SDK 层，非本模块可控）：MCP stdio 会话逐条处理请求（mcp SDK
 `shared/session.py::_receive_loop` 顺序 await 每条消息）——`run`/`profile` 等长任务
 执行期间，同一 server 的后续工具调用**排队等待**（客户端可能等到超时，实测
-30min 级）。这属编排纪律约束而非缺陷修复点：按协议顺序调用（run 完成后再调
-stats / round_close），禁止在长任务期间并发调用本 server；真需要并行时用独立
-连接（另一 server 名指向同一入口）。
+30min 级）。请按协议顺序调用（run 完成后再调 stats / report），避免在长任务期间
+并发调用同一连接；需要并行时请建立独立连接。
 """
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -30,18 +31,26 @@ from fastmcp.exceptions import ToolError
 mcp = FastMCP("mobench")
 
 _CLI = [sys.executable, "-m", "mobench"]
+DEFAULT_CLI_TIMEOUT = float(os.environ.get("MOBENCH_MCP_TIMEOUT", "1800"))
 
 
-def _run_cli(verb: str, args: list[str], *, json_out: bool = True) -> dict:
+def _run_cli(verb: str, args: list[str], *, json_out: bool = True,
+             timeout: float | None = DEFAULT_CLI_TIMEOUT,
+             allowed_exit_codes: tuple[int, ...] = (0,)) -> dict:
     """跑 `python -m mobench <verb> <args…> [--json]` 并返回结果。
 
-    args 是该 verb 之后的完整参数（形状由各工具按真身 CLI 拼装）；`--json` 统一追加末尾。
-    `json_out=False` 用于真身不支持 `--json` 的 verb（report）——此时不解析 stdout，
+    args 是该 verb 之后的完整参数（形状由各工具按 CLI 拼装）；`--json` 统一追加末尾。
+    `json_out=False` 用于不支持 `--json` 的 verb（report）——此时不解析 stdout，
     原样返回 `{"stdout": …}`（报告工件路径就在 stdout 里）。
     """
     cmd = [*_CLI, verb, *args, *(["--json"] if json_out else [])]
-    p = subprocess.run(cmd, capture_output=True, text=True)
-    if p.returncode != 0:
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise ToolError(
+            f"mobench {verb} 执行超时（timeout={timeout}s）"
+        ) from exc
+    if p.returncode not in allowed_exit_codes:
         raise ToolError(f"mobench {verb} 失败 rc={p.returncode}: {p.stderr.strip()[-800:]}")
     if not json_out:
         return {"stdout": p.stdout}
@@ -64,9 +73,9 @@ def run(config: str, expect_handoff: str | None = None,
         overrides: list[str] | None = None) -> dict:
     """执行基准（每次新跑，R2/R11）。
 
-    expect_handoff：engopt handoff.json 路径 → **前置校验（fail fast）**：先读 handoff，
-    再取 env 快照比对实测二进制 MD5（I6）；不可读 / 无 binary_md5 / 不匹配一律在开跑前拒绝，
-    不白烧一次真机实测；通过后才执行 run。
+    expect_handoff：外部构件清单 JSON 文件路径（需包含 ``"binary_md5"`` 字段）→
+    **前置校验（fail fast）**：先读清单文件，再取 env 快照比对实测二进制 MD5；
+    不可读 / 无 binary_md5 / 不匹配一律在开跑前拒绝，避免无效实测；通过后才执行 run。
     overrides：CLI 参数原样附加（如 ["--threads", "4"]）。
     """
     out: dict = {}
@@ -89,44 +98,57 @@ def run(config: str, expect_handoff: str | None = None,
 
 @mcp.tool
 def profile(config: str, extra: list[str] | None = None) -> dict:
-    """剖面（真身 `profile --config X [--model …] [--threads …] [--freq …] [--events …]`）。
+    """剖面（`profile --config X [--model …] [--threads …] [--freq …] [--events …]`）。
 
-    §4.1 后补项：归因输入的一部分——产 flamegraph/top/IPC 工件（host perf 或 adb simpleperf）。
+    产 flamegraph/top/IPC 工件（host perf 或 adb simpleperf）。
     """
     return _run_cli("profile", ["--config", config, *(extra or [])])
 
 
 @mcp.tool
 def stats(inputs: list[str], extra: list[str] | None = None) -> dict:
-    """统计（真身 `stats [--cv-threshold X] inputs…`：只吃 records；extra 参数原样透传）。
+    """统计（`stats [--cv-threshold X] inputs…`：只吃 records；extra 参数原样透传）。
 
-    注意语义：**汇总**，不是对比——传入多臂 records 会被合并统计（各臂均值差大时
-    合并 cv 会虚高，如 18%）。判决用对比须**分臂单独调用**本工具各取 mean，
-    再自行计算 delta 写入 round_close 的 comparison。
+    注意语义：**汇总**，不是对比——传入多组 records 会被合并统计（各组均值差大时
+    合并 cv 会虚高）。对比不同实验组请**分组单独调用**本工具各取均值后再比较。
     """
     return _run_cli("stats", [*inputs, *(extra or [])])
 
 
 @mcp.tool
 def regression(action: str, extra: list[str] | None = None) -> dict:
-    """回归检测（真身 `regression {save,compare} [--results …] [--baseline …] …`）。
+    """回归检测（`regression {save,compare} [--results …] [--baseline …] …`）。
 
-    action ∈ {"save", "compare"}；canonical 例：
+    action ∈ {"save", "compare"}；示例：
     extra=["--results", "results/records.jsonl", "--baseline", "results/baseline.json"]。
     """
     return _run_cli("regression", [action, *(extra or [])])
 
 
 @mcp.tool
+def validate(action: str, extra: list[str] | None = None) -> dict:
+    """精度校验门禁（`validate {run,compare} …`）。
+
+    action ∈ {"run", "compare"}；``compare`` 在 FAIL 时 CLI 返回退出码 2，
+    本工具将其视为正常的结构化判定结果返回（包含 verdict/exit_code/details）。
+    """
+    if action not in ("run", "compare"):
+        raise ToolError(f"validate action 必须为 'run' 或 'compare'，收到 {action!r}")
+    allowed = (0, 2) if action == "compare" else (0,)
+    return _run_cli("validate", [action, *(extra or [])],
+                    allowed_exit_codes=allowed)
+
+
+@mcp.tool
 def power(config: str, source: str, extra: list[str] | None = None) -> dict:
-    """功耗分析（真身 `power --config X --source Y`；source 为功耗数据文件，必填）。"""
+    """功耗分析（`power --config X --source Y`；source 为功耗数据文件，必填）。"""
     return _run_cli("power", ["--config", config, "--source", source, *(extra or [])])
 
 
 @mcp.tool
 def report(inputs: list[str], out: str | None = None,
            extra: list[str] | None = None) -> dict:
-    """出报告工件（真身 `report [--out DIR] [--format …] inputs…`，**无 --json**）。
+    """出报告工件（`report [--out DIR] [--format …] inputs…`，**无 --json**）。
 
     返回 {"stdout": "Markdown report: <path>\\n…"}——工件路径即证物。
     """
@@ -136,7 +158,7 @@ def report(inputs: list[str], out: str | None = None,
 
 @mcp.tool
 def runs(results: str = "results") -> dict:
-    """历史 run 索引（对话场景定位测量）：扫 results 目录下全部 run.json。
+    """历史 run 索引（扫描 results 目录下全部 run.json）。
 
     每行 = 时间 / engine / 标签 / artifact md5 / 记录数 / audit 状态 / 路径；
     结果在返回的 results 数组里（空目录 → 错误）。

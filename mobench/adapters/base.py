@@ -87,6 +87,9 @@ def _find_binary(cfg: dict, name: str) -> str:
     return candidates[0]
 
 
+from mobench.config import BUILTIN_ENGINES
+
+
 def get_adapter(cfg: dict) -> EngineAdapter:
     """Return an adapter instance for cfg['engine'] (raises AdapterError)."""
     engine = cfg.get("engine")
@@ -96,7 +99,8 @@ def get_adapter(cfg: dict) -> EngineAdapter:
         module = importlib.import_module(f"mobench.adapters.{engine}")
     except ImportError as exc:
         raise AdapterError(
-            f"unsupported engine {engine!r}; registered adapters: llamacpp, mnn"
+            f"unsupported engine {engine!r}; registered adapters: "
+            + ", ".join(BUILTIN_ENGINES)
         ) from exc
     adapter_cls = getattr(module, "ADAPTER", None)
     if adapter_cls is None:

@@ -246,3 +246,37 @@ def test_parse_legacy_params_unchanged_without_controls(tmp_path):
     recs = adapter.parse(fixture_log(tmp_path), {"id": "m", "path": "/m.gguf"},
                          threads=4, round_no=1)
     assert recs[0]["params"] == {"prompt_tokens": 64, "gen_tokens": 128}
+
+
+def test_parse_single_element_array_with_leading_log_lines(tmp_path):
+    # Regression: leading [INFO]/{debug} lines + single-element top-level array
+    # must parse as list[dict], not get mis-sliced into inner dict.
+    cfg = make_cfg(tmp_path)
+    adapter = LlamacppAdapter(cfg)
+    log = tmp_path / "noisy_array.log"
+    log.write_text(
+        "[INFO] load_backend: loaded CPU backend\n"
+        "{debug} init ok\n"
+        + json.dumps([{"n_prompt": 0, "n_gen": 128, "avg_ts": 42.5}])
+        + "\n[INFO] done\n",
+        encoding="utf-8",
+    )
+    recs = adapter.parse(str(log), {"id": "m", "path": "/m.gguf"}, threads=4, round_no=1)
+    by = {r["metric"]: r for r in recs}
+    assert by["gen_tok_s"]["value"] == pytest.approx(42.5)
+    assert by["gen_ms_tok"]["value"] == pytest.approx(1000.0 / 42.5)
+
+
+def test_parse_legacy_dict_with_leading_bracket_log_lines(tmp_path):
+    cfg = make_cfg(tmp_path)
+    adapter = LlamacppAdapter(cfg)
+    log = tmp_path / "noisy_dict.log"
+    log.write_text(
+        "[INFO] starting llama-bench\n"
+        + json.dumps({"results": [{"t_generation": 25.0}]})
+        + "\n",
+        encoding="utf-8",
+    )
+    recs = adapter.parse(str(log), {"id": "m", "path": "/m.gguf"}, threads=4, round_no=1)
+    by = {r["metric"]: r for r in recs}
+    assert by["gen_tok_s"]["value"] == pytest.approx(40.0)

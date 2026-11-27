@@ -1,11 +1,10 @@
 # 模板 — llama.cpp · qwen3-0.6b 基准入口（q4_k_m 基线档）
 # 用法: 替换 <占位符> 另存到 configs/local/ 后
-#   cd <mobile-bench> && python3 -m mobench run --config configs/local/<档>.yml
-# 被测产物: llama.cpp fork NDK 现编（arm64 llama-bench + lib*.so）
+#   cd <mobench> && python3 -m mobench run --config configs/local/<档>.yml
+# 被测产物: llama.cpp NDK 现编（arm64 llama-bench + lib*.so）
 #
 # ⚠ 构建必需带 dotprod —— 缺了会让 repack 分块路径与 sdot 内核在编译期被禁用，
-#   实测 prefill ×2.94 / decode ×1.29（×2 级）的性能损失，且外观上像是"算法形态劣势"。
-#   证据链与复现见 docs/compare-llamacpp-dotprod-vs-baseline-20260910.md
+#   导致明显的性能退化且外观上像是"算法形态劣势"。
 #   构建：
 #     cmake -S <FORK_DIR> -B <build-dir> -G Ninja \
 #       -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
@@ -22,14 +21,15 @@ engine: llamacpp
 
 platform:
   type: adb
-  adb: "<ADB_EXE>"                    # E 盘 Windows adb.exe 需经 UNC/盘符 wrapper（如被测仓 tools/adb-eunc-wrapper.sh）
-  device_id: "<DEVICE_ID>"            # 真机（如小米10 / M2007J3SC）
+  adb: "<ADB_EXE>"                    # 本机 adb，或在 WSL 下使用本仓库 tools/adb-unc-wrapper.sh
+  device_id: "<DEVICE_ID>"            # Android 真机序列号（见 adb devices）
 
 build:
   bin_dir: "<FORK_BIN_DIR>"           # NDK 产物目录（整目录推送）
   bench_bin: llama-bench
-  source_dir: "<FORK_DIR>"            # 被测 llama.cpp fork（git commit 溯源）
-  # 必需编译参数（ARM64 真机）。mobench 不消费此字段，仅作文档与构建自检依据；
+  source_dir: "<FORK_DIR>"            # 被测 llama.cpp 源码根（git commit 溯源）
+  # 必需编译参数（ARM64 真机）：mobench run 会读取 build_dir/CMakeCache.txt 强制校验此字段，
+  # 不匹配或找不到 CMakeCache.txt 会拒绝开跑；若产物目录非 CMake 构建树，请移除或注释此项。
   # 缺 dotprod ⇒ ggml_cpu_has_dotprod() 被常量折叠为 0 ⇒ repack(q4_K_8x4) 全落空 + sdot 未编译。
   required_cmake_args: "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod"
 
@@ -55,4 +55,4 @@ methodology:
   env_control: auto
   thermal: true
 
-results_dir: results/llamacpp         # 相对运行 cwd（<mobile-bench>）；已在 .gitignore 忽略
+results_dir: results/llamacpp         # 相对运行 cwd（<mobench>）；已在 .gitignore 忽略
