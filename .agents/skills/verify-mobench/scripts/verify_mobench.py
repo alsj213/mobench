@@ -94,6 +94,22 @@ def _online_device(adb: str) -> str | None:
     return None
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, str(default))
+    try:
+        return int(raw)
+    except ValueError:
+        raise SystemExit(f"verify-mobench: {name} must be an integer, got {raw!r}")
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, str(default))
+    try:
+        return float(raw)
+    except ValueError:
+        raise SystemExit(f"verify-mobench: {name} must be a number, got {raw!r}")
+
+
 def _yaml_dump(data: dict) -> str:
     try:
         import yaml
@@ -166,12 +182,12 @@ def cmd_write_config(args) -> int:
         r"[^a-z0-9._-]+", "-", Path(model).stem.lower()
     ).strip("-")
     precision = env("MOBENCH_VERIFY_PRECISION", "q4_k_m")
-    threads = int(env("MOBENCH_VERIFY_THREADS", "4"))
-    rounds = int(env("MOBENCH_VERIFY_ROUNDS", "2"))
-    prompt = int(env("MOBENCH_VERIFY_PROMPT", "64"))
-    gen = int(env("MOBENCH_VERIFY_GEN", "64"))
-    cooldown = env("MOBENCH_VERIFY_COOLDOWN_C", "45")
-    cmake_args = env("MOBENCH_VERIFY_CMAKE_ARGS", DEFAULT_CMAKE_ARGS)
+    threads = _env_int("MOBENCH_VERIFY_THREADS", 4)
+    rounds = _env_int("MOBENCH_VERIFY_ROUNDS", 2)
+    prompt = _env_int("MOBENCH_VERIFY_PROMPT", 64)
+    gen = _env_int("MOBENCH_VERIFY_GEN", 64)
+    cooldown = os.environ.get("MOBENCH_VERIFY_COOLDOWN_C", "45")
+    cmake_args = os.environ.get("MOBENCH_VERIFY_CMAKE_ARGS", DEFAULT_CMAKE_ARGS)
 
     cfg = {
         "engine": "llamacpp",
@@ -206,7 +222,7 @@ def cmd_write_config(args) -> int:
     if cmake_args:
         cfg["build"]["required_cmake_args"] = cmake_args
     if cooldown and cooldown.lower() != "none":
-        cfg["methodology"]["cooldown_c"] = float(cooldown)
+        cfg["methodology"]["cooldown_c"] = _env_float("MOBENCH_VERIFY_COOLDOWN_C", 45.0)
         cfg["methodology"]["cooldown_max_s"] = 600
 
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -550,6 +566,22 @@ def cmd_prove(args) -> int:
         if src:
             raw_logs.add(str((root / src).resolve()))
 
+    # A proof directory that only points at the original run dir is not
+    # self-contained: copy the small trace files so the evidence survives even
+    # if results/ is pruned later.
+    run_copy = evidence / "run"
+    run_copy.mkdir(parents=True, exist_ok=True)
+    for name in ("run.json", "records.jsonl"):
+        if (run_dir / name).is_file():
+            shutil.copy2(run_dir / name, run_copy / name)
+    raw_logs_copy = []
+    for src in sorted(raw_logs):
+        dst = run_copy / Path(src).name
+        shutil.copy2(src, dst)
+        raw_logs_copy.append(str(dst))
+    _check(proof_checks, "self-contained run copy", (run_copy / "run.json").is_file()
+           and (run_copy / "records.jsonl").is_file(), str(run_copy))
+
     device_label = f"{model}" if model else "unknown device"
     proof = {
         "schema": "mobench/verify-proof@1",
@@ -564,6 +596,7 @@ def cmd_prove(args) -> int:
             "label": label,
             "elapsed_s": round(elapsed, 2),
             "run_dir": str(run_dir),
+            "run_copy": str(run_copy),
             "records": str(records_path),
             "n_records": n_records,
             "valid": meta.get("valid"),
@@ -578,6 +611,7 @@ def cmd_prove(args) -> int:
             "report_md": str(md_path),
             "report_html": str(html_path),
             "raw_logs": sorted(raw_logs),
+            "raw_logs_copy": raw_logs_copy,
         },
         "checks": proof_checks,
     }
@@ -618,6 +652,7 @@ def cmd_prove(args) -> int:
         "",
         f"- `{evidence / 'doctor.txt'}`",
         f"- `{evidence / 'run.stdout.json'}` / `{evidence / 'run.stderr.log'}`",
+        f"- `{run_copy / 'run.json'}` / `{run_copy / 'records.jsonl'}` + `{run_copy}/raw_*.log`",
         f"- `{md_path}` / `{html_path}`",
         f"- `{evidence / 'proof.json'}`",
         "",
@@ -638,7 +673,11 @@ def cmd_prove(args) -> int:
 def _latest_run(results: Path) -> Path | None:
     if not results.is_dir():
         return None
-    candidates = sorted(results.rglob("run.json"), key=lambda p: p.stat().st_mtime)
+    candidates = [
+        p for p in results.rglob("run.json")
+        if "evidence" not in p.parts
+    ]
+    candidates.sort(key=lambda p: p.stat().st_mtime)
     return candidates[-1].parent if candidates else None
 
 
@@ -670,6 +709,22 @@ def cmd_cleanup(args) -> int:
                 print("PASS: no benchmark process left on the device")
 
     run_dir = Path(args.run).resolve() if args.run else _latest_run(root / results_dir())
+    if not args.run and args.evidence:
+        # Prefer the run named by the proof under test over "newest run".
+        ev = Path(args.evidence)
+        if not ev.is_absolute():
+            ev = root / ev
+        proof_path = ev / "proof.json"
+        if proof_path.is_file():
+            try:
+                proof_data = json.loads(proof_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                proof_data = {}
+            raw_run = (proof_data.get("run") or {}).get("run_dir")
+            if raw_run and not Path(raw_run).is_dir():
+                raw_run = (proof_data.get("run") or {}).get("run_copy")
+            if raw_run:
+                run_dir = Path(raw_run).resolve()
     if run_dir and (run_dir / "run.json").is_file():
         try:
             meta = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
@@ -701,13 +756,34 @@ def cmd_cleanup(args) -> int:
         else:
             print(f"PASS: no governor state to compare for {run_dir.name}")
 
+    if args.evidence:
+        ev = Path(args.evidence)
+        if not ev.is_absolute():
+            ev = root / ev
+        proof_path = ev / "proof.json"
+        if not proof_path.is_file():
+            failures.append(f"evidence proof missing: {proof_path}")
+        else:
+            try:
+                proof_data = json.loads(proof_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                failures.append(f"evidence proof is not valid JSON: {proof_path}: {exc}")
+            else:
+                bad = [c.get("name") for c in (proof_data.get("checks") or []) if not c.get("ok")]
+                if bad:
+                    failures.append(f"evidence proof has failed checks: {', '.join(bad)}")
+                else:
+                    print(f"PASS: evidence proof intact and all checks true: {proof_path}")
+    else:
+        evidence_root = root / results_dir() / "evidence"
+        if evidence_root.is_dir():
+            print(f"evidence kept at: {evidence_root}")
+        print("tip: pass --evidence <proof dir> to assert a specific proof is still intact")
+
     if args.remove_config and cfg_path.is_file():
         cfg_path.unlink()
         print(f"removed disposable config: {cfg_path}")
 
-    evidence_root = root / results_dir() / "evidence"
-    if evidence_root.is_dir():
-        print(f"evidence kept at: {evidence_root}")
     if failures:
         for item in failures:
             print(f"FAIL: {item}", file=sys.stderr)
@@ -747,7 +823,8 @@ def main(argv=None) -> int:
     p = sub.add_parser("cleanup", help="verify no process/governor was left behind")
     p.add_argument("--config", help="config path")
     p.add_argument("--run", help="specific run dir (default: newest under results)")
-    p.add_argument("--remove-config", action="store_true", help="delete the disposable config after copying evidence")
+    p.add_argument("--evidence", help="assert this proof directory still has proof.json with all checks true")
+    p.add_argument("--remove-config", action="store_true", help="delete the disposable config (run prove first)")
     p.set_defaults(func=cmd_cleanup)
 
     args = parser.parse_args(argv)

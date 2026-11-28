@@ -28,7 +28,8 @@ for comparing groups.
 
 Preconditions:
 
-- A completed, valid run directory exists under `results/verify-mobench/runs/`.
+- A completed, valid run directory exists under `$MOBENCH_VERIFY_RESULTS/`
+  (default `results/verify-mobench/`).
 - `$RUN_DIR` names it and `$EVIDENCE` names the output directory.
 - The run's records are readable and not marked invalid.
 

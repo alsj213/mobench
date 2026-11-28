@@ -33,7 +33,7 @@ turn that directory into a reviewable result without re-running the device.
 Preconditions:
 
 - One completed run from `run-device-benchmark` exists under
-  `results/verify-mobench/runs/`.
+  `$MOBENCH_VERIFY_RESULTS/` (default `results/verify-mobench/`).
 - `$RUN_DIR` names that run directory, or the records file inside it.
 - `python3 -m mobench` works from the repo root.
 
