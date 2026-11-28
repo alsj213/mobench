@@ -154,11 +154,12 @@ def test_host_env_control_root_pins_and_restores(tmp_path, monkeypatch):
 
 def test_host_env_control_root_cpufail_degrades(tmp_path, monkeypatch):
     platform = _root_platform(tmp_path, monkeypatch, cpufail=True)
-    platform.control(platform.cfg, {})
+    info = {}
+    platform.control(platform.cfg, info)
     cond = platform.measure_condition(3)
 
     assert cond["freq"]["locked"] is False
-    assert "degraded" in platform._env_control_label.lower()
+    assert "degraded" in info["env_control"]["value"].lower()
 
 
 # ---- regression: read engine version from adjacent run.json -------------

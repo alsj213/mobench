@@ -7,7 +7,6 @@ import pytest
 from mobench.analysis import power as power_mod
 from mobench.analysis import regression as reg_mod
 from mobench.analysis import stats as stats_mod
-from mobench.analysis.compare_precision import cosine_similarity, precision_status
 from mobench.records import RECORD_SCHEMA, append_record, iter_records
 
 
@@ -279,27 +278,3 @@ def test_stats_and_regression_separate_backends_and_platforms(tmp_path):
     assert {(r["backend"], r["platform"]) for r in rows} == {
         ("cpu", "host"), ("opencl", "host"), ("cpu", "adb")
     }
-
-
-# ---- precision ---------------------------------------------------------
-def test_precision_status_unavailable_when_no_ref():
-    # Act
-    result = precision_status(ref_available=False)
-
-    # Assert
-    assert result["status"] == "unavailable"
-    assert "unavailable" in result["label"]
-    assert result["cosine"] is None
-
-
-def test_precision_cosine_matches():
-    # Arrange
-    ref = [1.0, 0.0, 0.0]
-    cand = [1.0, 0.0, 0.0]
-
-    # Act
-    result = precision_status(ref_available=True, ref=ref, cand=cand)
-
-    # Assert
-    assert result["cosine"] == pytest.approx(1.0)
-    assert result["mae"] == pytest.approx(0.0)

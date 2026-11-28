@@ -13,7 +13,7 @@ import json
 import os
 
 from mobench.adapters.base import AdapterError, get_adapter
-from mobench.io_utils import atomic_write_json
+from mobench.io_utils import atomic_write_json, file_md5
 from mobench.platform.base import BasePlatform, PlatformError
 
 
@@ -45,16 +45,6 @@ def snapshot(cfg: dict) -> dict:
     }
 
 
-def _md5_of(path):
-    import hashlib
-
-    h = hashlib.md5()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 def _binary_md5(cfg):
     try:
         binary = get_adapter(cfg).resolve_binary()
@@ -69,7 +59,7 @@ def _models_md5(cfg):
     out = []
     for m in cfg.get("models") or []:
         try:
-            out.append({"id": m["id"], "path": m["path"], "md5": _md5_of(m["path"]),
+            out.append({"id": m["id"], "path": m["path"], "md5": file_md5(m["path"]),
                         "source": f"md5sum {m['path']}"})
         except OSError as exc:
             out.append({"id": m["id"], "error": str(exc)})

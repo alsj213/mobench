@@ -12,6 +12,7 @@ import os
 import subprocess
 
 from mobench.config import parse_cpus
+from mobench.io_utils import file_md5 as _stream_file_md5
 from mobench.platform.cpu import CpuSelectionError, cpu_mask, select_cpus
 
 GOVERNOR = "performance"
@@ -220,13 +221,7 @@ class BasePlatform:
 
     def file_md5(self, path: str) -> str:
         """Streaming md5 hex of a local file (adb impl may hash after pull)."""
-        import hashlib
-
-        h = hashlib.md5()
-        with open(path, "rb") as fh:
-            for chunk in iter(lambda: fh.read(1 << 20), b""):
-                h.update(chunk)
-        return h.hexdigest()
+        return _stream_file_md5(path)
 
     # -- thermal / performance-band sampling (add-thermal-band-monitor) -----
     def sample_thermal(self) -> dict:

@@ -126,7 +126,11 @@ def mem_pipeline(cfg, model_id=None, threads=None, prompt=None, gen=None,
     c["workload"] = work
     cmd = get_adapter(c).build_cmds(m, threads, rounds=1)[0]
     results_dir = cfg.get("results_dir", "results")
-    bench = (cfg.get("build") or {}).get("bench_bin", "llm_bench")
+    bench = (
+        adapter.process_name()
+        if hasattr(adapter, "process_name")
+        else os.path.basename(binary)
+    )
     samples = []          # (t_sec, rss_kb)
     start = time.monotonic()
     gone = 0              # consecutive polls without a pid before we stop

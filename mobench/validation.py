@@ -22,7 +22,7 @@ import sys
 
 from mobench.adapters.base import AdapterError, get_adapter
 from mobench.artifacts_hash import artifact_set_md5
-from mobench.io_utils import atomic_write_json, make_run_dir
+from mobench.io_utils import atomic_write_json, file_sha256, make_run_dir
 from mobench.platform.base import BasePlatform
 
 
@@ -37,14 +37,6 @@ SCHEMA = "mobench/validate@1"
 # never single-token decode): a path with no instrument is NOT COVERED and no
 # verdict may imply otherwise.
 INSTRUMENT_PATHS = {"ppl": "prefill", "greedy": "decode"}
-
-
-def _sha256_file(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _prompts_sha256(prompts):
@@ -65,19 +57,17 @@ def build_controls(cfg, model_path, platform, threads) -> dict:
     compared.
     """
     val = cfg.get("validation") or {}
-    workload = cfg.get("workload") or {}
     controls = {
         "model_md5": platform.file_md5(model_path),
         "threads": threads,
         "sampling": "greedy",
         "gen_tokens": val.get("gen_tokens"),
         "prompts_sha256": _prompts_sha256(val.get("prompts") or []),
-        "batch": workload.get("batch"),
     }
     ppl = val.get("ppl")
     if ppl:
         controls["ppl"] = {
-            "dataset_sha256": _sha256_file(ppl["dataset"]),
+            "dataset_sha256": file_sha256(ppl["dataset"]),
             "ctx": ppl.get("ctx"),
             "chunks": ppl.get("chunks"),
         }
@@ -122,14 +112,14 @@ def _run_side(cfg, cfg_path, side, model, adapter, platform, threads,
     jobs = adapter.build_validate_cmds(model, val_cfg, workload, threads)
     identity = {
         "config_path": os.path.abspath(cfg_path) if cfg_path else None,
-        "config_sha256": _sha256_file(cfg_path) if cfg_path else None,
+        "config_sha256": file_sha256(cfg_path) if cfg_path else None,
         "engine_version": adapter.version(),
         "binary_md5": {},
-        "params": {k: v for k, v in {
-            "flash_attn": workload.get("flash_attn"),
-            "type_k": workload.get("cache_type_k"),
-            "type_v": workload.get("cache_type_v"),
-        }.items() if v is not None},
+        "params": (
+            adapter.validation_identity_params(workload)
+            if hasattr(adapter, "validation_identity_params")
+            else {}
+        ),
     }
     instruments = {}
     for idx, job in enumerate(jobs):

@@ -145,10 +145,6 @@
           "type": "integer",
           "minimum": 1
         },
-        "batch": {
-          "type": "integer",
-          "minimum": 1
-        },
         "n_depth": {
           "type": "integer",
           "minimum": 1,
@@ -286,14 +282,6 @@
             }
           },
           "description": "Regex probes run over each round's raw log (forbid aborts immediately; missing expect flags log_audit)."
-        },
-        "power": {
-          "type": "boolean",
-          "description": "Reserved documentation flag indicating power analysis intent."
-        },
-        "thermal": {
-          "type": "boolean",
-          "description": "Reserved documentation flag indicating thermal monitoring intent."
         }
       }
     },

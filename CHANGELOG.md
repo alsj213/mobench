@@ -8,19 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- 统一本地与 CI 验证入口 `scripts/verify.py`（字节码编译、版本同步、Schema/YAML、仓库卫生、AST 签名/裸 `open()`/边界守门、核心依赖隔离与 >= 80% 分支覆盖率门禁）及端到端契约测试套件。
+- 新增 `mobench/io_utils.py`，提供流式 MD5/SHA256、临时文件 + `os.replace` 原子 JSON 落盘与冲突安全目录生成 `make_run_dir`。
+- `run` 新增 `--cooldown-c`、`--cooldown-per-round`、`--max-attempts` 与 `methodology.timeout_s`；`stats` / `regression` / `report` 新增 `--include-invalid`；`regression compare` 新增 `--threshold`；`power` 新增 `--duration`；`env` 新增 `--no-save`。
 - `mobench --version` / `-V` CLI 选项，直接输出当前版本号。
 - MCP Server 新增 `validate` 工具，支持以结构化结果消费 `validate compare`（含 `FAIL` 退出码 `2`）。
-- 仓库新增 `.gitattributes` 与 `.github/dependabot.yml`，CI 补强字节码编译检查、`--cov-fail-under=80` 门禁及配置 Schema/卫生扫描。
+- 仓库新增 `.gitattributes` 与 `.github/dependabot.yml`，CI 复用 `scripts/verify.py`。
 
 ### Changed
-- 同步更新 `schema/mobench.schema.json`，补全 `build.required_cmake_args`、`workload` KV/深度控制、`methodology` 冷却/频率门禁/日志探针及 `llamacpp`/`mnn` 配置块。
+- 统一 `profile` / `memory` / `trace` 共享 `measurement_session` 生命周期并在 `run.py` 闭合每轮跑前冷却、跑后温度/频率审计与下游无效 run 过滤。
+- 合并 `profiling.py` 双平台重复流水线；将模型转换、校验身份参数与进程名查找下沉至 `mobench/adapters/`，`config.py` 补全运行期配置校验并委派适配器自检。
+- 同步更新 `schema/mobench.schema.json`，补全 `build.required_cmake_args`、`workload` KV/深度控制、`methodology` 冷却/频率门禁/重试/超时/日志探针及 `llamacpp`/`mnn` 配置块，移除未实现消费的死字段。
 - 清理仓库文档、模板与技能文件中的失效内部路径与关联项目引用，明确 `memory`/`trace` 当前仅支持 `adb`、`report` 不支持 `--json`，并修正 `CODE_OF_CONDUCT.md` 私密举报渠道。
 
 ### Fixed
+- 修正功耗量纲换算（`MAH_TO_JOULE = 12.96`）、`stats` 样本标准差、跨目录 `source_log` 解析、`backend`/`platform` 分组键隔离、`mnn` 多长度 `pp<n>`/`tg<n>` 与 `cli_args` 透传、以及 `validate` A/B 两侧独立适配器与覆盖交集。
+- 加固 `AdbPlatform`：精确在线状态校验、单 shell 配对热区读取、跨进程 MD5 去重推包、模型目录哈希防碰撞、`bin` 目录陈旧文件清理，以及 `HostPlatform` 文件句柄上下文管理与 hwmon 最大温度选取；`artifact_set_md5` 覆盖 `*.so.*` 并接入 `profile` / `memory` / `trace`；MCP `expect_handoff` 检查改用 `env --no-save` 实现零副作用。
 - 修复 `AdbPlatform` 远程 shell 命令拼接缺失 `shlex.quote` 转义及 `trace.py` `atrace` 类别分隔符（空格而非逗号）的问题，并增加类别/事件/policy 名白名单校验。
 - 修复 `llamacpp.py` `_extract_json` 在存在前导日志行且输出单元素顶层 JSON 数组时误截成内层字典的问题。
 - 修复 `prepare.download` 缺失 URL 协议限制（仅允许 `http`/`https`）、下载超时与 `.part` 原子落盘问题。
 - 为 `flamegraph.flame_html`、`trace._html` 与 `scripts/md2report.py` 补全 `html.escape` 转义，消除 HTML 报告注入风险。
+
+### Removed
+- 删除独立的 `scripts/mobench-t4.py`（功能已收编进 `mobench run`）、孤儿模块 `mobench/analysis/compare_precision.py`，以及 Schema 与模板中的失效字段 `workload.batch` / `methodology.power` / `methodology.thermal`。
 
 ## [0.9.0] - 2026-10-16
 

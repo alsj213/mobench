@@ -53,6 +53,5 @@ methodology:
   # 关闭：cpu_pin: false / lock_freq: false；env_control: none 一次全关
   # 显式指定核集合（跳过自动探测）：pin_cpus: "4-7"
   env_control: auto
-  thermal: true
 
 results_dir: results/llamacpp         # 相对运行 cwd（<mobench>）；已在 .gitignore 忽略

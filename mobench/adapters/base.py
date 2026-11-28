@@ -70,6 +70,28 @@ class EngineAdapter:
             f"engine {self.engine!r} does not implement the validation "
             f"contract (no precision instruments)")
 
+    # -- optional engine capability hooks -----------------------------------
+    def validate_config(self, cfg: dict) -> List[str]:
+        """校验引擎专属配置段，返回人类可读问题列表。"""
+        return []
+
+    def convert_model(self, model: dict) -> List[str]:
+        """调用引擎自带模型转换工具，成功返回实际执行的 argv 列表。"""
+        raise AdapterError(
+            f"engine {self.engine!r} does not implement model conversion"
+        )
+
+    def validation_identity_params(self, workload: dict) -> dict:
+        """提取精度对比的引擎身份参数（仅影响对照标识，不进 controls）。"""
+        return {}
+
+    def process_name(self) -> str:
+        """返回运行期用于 pidof 轮询的被测进程名。"""
+        bench_bin = (self.cfg.get("build") or {}).get("bench_bin")
+        if bench_bin:
+            return os.path.basename(str(bench_bin))
+        return os.path.basename(self.resolve_binary())
+
 
 def _find_binary(cfg: dict, name: str) -> str:
     """Resolve an engine bench binary from config then PATH."""

@@ -472,8 +472,8 @@ def test_profile_adb_restores_governor_after_run(monkeypatch, tmp_path):
     monkeypatch.setattr(profiling, "find_simpleperf_dir", lambda ndk_dir=None: "")
 
     # Act
-    meta = profiling._profile_pipeline_adb(cfg, _platform=FakePlatform(),
-                                           _adapter=FakeAdapter())
+    meta = profiling.profile_pipeline(cfg, _platform=FakePlatform(),
+                                      _adapter=FakeAdapter())
 
     # Assert
     assert calls[0] == "measure"
@@ -527,8 +527,8 @@ def test_profile_host_restores_governor_on_failure(monkeypatch, tmp_path):
 
     # Act / Assert
     with pytest.raises(RuntimeError):
-        profiling._profile_host(cfg, _platform=FakePlatform(),
-                                _adapter=FakeAdapter())
+        profiling.profile_pipeline(cfg, _platform=FakePlatform(),
+                                   _adapter=FakeAdapter())
     assert calls == ["measure", "restore"], f"unexpected calls {calls!r}"
 
 
