@@ -214,7 +214,6 @@ def top_symbols(text: str, limit: int = 25) -> list:
 # =====================================================================
 # profile pipeline (adb/simpleperf first target)
 # =====================================================================
-import datetime  # noqa: E402
 import glob  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
@@ -224,7 +223,9 @@ import sys  # noqa: E402
 
 from mobench import flamegraph  # noqa: E402
 from mobench.adapters.base import AdapterError, get_adapter  # noqa: E402
+from mobench.artifacts_hash import artifact_set_md5  # noqa: E402
 from mobench.config import ConfigError, load_config  # noqa: E402
+from mobench.io_utils import atomic_write_json, make_run_dir  # noqa: E402
 from mobench.platform.base import BasePlatform, PlatformError, measurement_session  # noqa: E402
 
 DEFAULT_EVENTS = ["cpu-cycles", "instructions", "cache-misses",
@@ -383,9 +384,7 @@ def _profile_host(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
     # Absolute paths: subprocesses run with cwd=out_dir, so a relative
     # out_dir/perf.data would double-nest and perf cannot open it.
     results_dir = os.path.abspath(cfg.get("results_dir", "results"))
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = os.path.join(results_dir, f"profile_{ts}")
-    os.makedirs(out_dir, exist_ok=True)
+    ts, out_dir = make_run_dir(results_dir, "profile")
     perf_local = os.path.join(out_dir, "perf.data")
 
     def _run_tool(args):
@@ -416,12 +415,17 @@ def _profile_host(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
     except PlatformError as exc:
         raise RuntimeError("[step:env control] " + str(exc))
 
+    binary_info = (
+        {"path": binary, "md5": artifact_set_md5(binary), "md5_scope": "artifact_set(binary+*.so*)"}
+        if os.path.isfile(binary)
+        else {"path": binary, "md5": platform.file_md5(binary)}
+    )
     meta = {
         "schema": "mobench/profile@1",
         "timestamp": ts,
         "engine": cfg["engine"],
         "engine_version": engine_version,
-        "binary": {"path": binary, "md5": platform.file_md5(binary)},
+        "binary": binary_info,
         "model": m["id"], "threads": threads,
         "freq": freq, "events": events,
         "platform": info,
@@ -462,8 +466,7 @@ def _profile_host(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
     else:
         meta["flame_skipped"] = "no call stacks folded from perf script"
 
-    with open(os.path.join(out_dir, "profile.json"), "w", encoding="utf-8") as fh:
-        json.dump(meta, fh, indent=2, ensure_ascii=False)
+    atomic_write_json(os.path.join(out_dir, "profile.json"), meta)
     return meta
 
 
@@ -498,9 +501,7 @@ def _profile_pipeline_adb(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
     cmd = adapter.build_cmds(m, threads, rounds=1)[0]
 
     results_dir = cfg.get("results_dir", "results")
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = os.path.join(results_dir, f"profile_{ts}")
-    os.makedirs(out_dir, exist_ok=True)
+    ts, out_dir = make_run_dir(results_dir, "profile")
 
     perf_local = os.path.join(out_dir, "perf.data")
     top_text = ""
@@ -527,12 +528,17 @@ def _profile_pipeline_adb(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
             pulled = _pull(platform, cap["perf_data"], perf_local)
     except PlatformError as exc:
         raise RuntimeError("[step:env control] " + str(exc))
+    binary_info = (
+        {"path": binary, "md5": artifact_set_md5(binary), "md5_scope": "artifact_set(binary+*.so*)"}
+        if os.path.isfile(binary)
+        else {"path": binary, "md5": platform.file_md5(binary)}
+    )
     meta = {
         "schema": "mobench/profile@1",
         "timestamp": ts,
         "engine": cfg["engine"],
         "engine_version": engine_version,
-        "binary": {"path": binary, "md5": platform.file_md5(binary)},
+        "binary": binary_info,
         "model": m["id"], "threads": threads,
         "freq": freq, "events": events,
         "platform": info, "condition": condition,
@@ -588,8 +594,7 @@ def _profile_pipeline_adb(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
             else "perf.data not pulled")
 
     meta_path = os.path.join(out_dir, "profile.json")
-    with open(meta_path, "w", encoding="utf-8") as fh:
-        json.dump(meta, fh, indent=2, ensure_ascii=False)
+    atomic_write_json(meta_path, meta)
     return meta
 
 

@@ -7,12 +7,14 @@ best-effort and degrades when the device shell is not root.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shlex
 import subprocess
 import time
 
+from mobench.io_utils import file_md5
 from mobench.platform.base import GOVERNOR, BasePlatform, PlatformError
 from mobench.platform.cpu import parse_policies
 
@@ -63,14 +65,22 @@ class AdbPlatform(BasePlatform):
     def _adb_base(self):
         return [self.adb, "-s", self.device_id]
 
+    @staticmethod
+    def _is_online_line(line: str, device_id: str | None) -> bool:
+        parts = line.split("\t")
+        return len(parts) >= 2 and parts[0].strip() == device_id and parts[1].strip() == "device"
+
     # -- preflight ----------------------------------------------------------
     def preflight(self) -> dict:
         # devices listing
         proc = subprocess.run([self.adb, "devices"], capture_output=True,
                               text=True, timeout=60)
         lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
-        online = any(ln.split("\t")[0] == self.device_id and "device" in ln
-                     for ln in lines[1:]) if len(lines) > 1 else False
+        online = (
+            any(self._is_online_line(ln, self.device_id) for ln in lines[1:])
+            if len(lines) > 1
+            else False
+        )
         if not online:
             raise PlatformError(
                 f"adb device {self.device_id} not online "
@@ -98,29 +108,32 @@ class AdbPlatform(BasePlatform):
     def _temp_c(self):
         """Hottest readable thermal zone in Celsius (values are mC on Android).
 
-        2026-10-09 实测教训：旧实现「取第一个可解析 zone」落在 aoss 等
-        不敏感区（36°C），而同期 CPU zone 60°C+——温度监控形同虚设，
-        throttle 判定（>45°C）永不触发。改为 type/temp 两次读取按行配对、
-        取最大值（最热区即热压力信号），并附 zone 名用于诊断。
-        （glob 展开序在同 shell 下稳定，两次读取按行对齐；type 缺行最坏只
-        影响 zone 名标注，不影响最大值语义。）
+        同 shell 循环配对读取每个可读 thermal_zone 的 type 与 temp，
+        防止个别 zone 不可读导致 type/temp 行错位，取最热 zone 温度作热压力信号。
         """
-        rc_t, types = self._shell(["cat", "/sys/class/thermal/thermal_zone*/type"])
-        rc_v, values = self._shell(["cat", "/sys/class/thermal/thermal_zone*/temp"])
-        names = types.split()
+        script = (
+            'for z in /sys/class/thermal/thermal_zone*; do '
+            '[ -r "$z/temp" ] || continue; '
+            'echo "$(cat "$z/type" 2>/dev/null)|$(cat "$z/temp" 2>/dev/null)"; '
+            'done'
+        )
+        rc, out = self._shell([script])
         best = None
-        for idx, raw in enumerate(values.split()):
+        for line in (out or "").splitlines():
+            zone, sep, raw = line.partition("|")
+            if not sep:
+                continue
             try:
                 value = int(raw.strip()) / 1000.0
             except ValueError:
                 continue
             if best is None or value > best[0]:
-                best = (value, names[idx] if idx < len(names) else None)
+                best = (value, zone.strip() or None)
         if best is not None:
             return {"value": best[0], "zone": best[1],
                     "source": "adb thermal_zone max (mC)", "unit": "celsius"}
         return {"value": None, "source": "adb thermal_zone",
-                "error": "not available", "rc": rc_v or rc_t}
+                "error": "not available", "rc": rc}
 
     def _cpu_freq(self):
         """Max current core frequency in MHz (performance-band signal).
@@ -281,31 +294,74 @@ class AdbPlatform(BasePlatform):
         raise PlatformError(
             f"adb push failed for {local_path}: {(last.stderr or last.stdout).strip()}")
 
+    def _remote_file_matches(self, remote_path: str, local_md5: str) -> bool:
+        """检查设备端文件 MD5 是否与本地一致，实现跨进程幂等跳过推包。"""
+        rc, out = self._shell(
+            [f"md5sum {shlex.quote(remote_path)} 2>/dev/null"],
+            timeout=120,
+        )
+        if rc != 0 or not out:
+            return False
+        tokens = out.strip().split()
+        return bool(tokens) and tokens[0].lower() == local_md5.lower()
+
     def _push(self, local_path):
         if local_path in self._pushed:
             return self._pushed[local_path]
         if not os.path.isfile(local_path):
             raise PlatformError(f"local file missing for adb push: {local_path}")
-        remote = REMOTE_DIR + "/" + os.path.basename(local_path)
-        self._push_file(local_path, remote)
+        local_md5 = file_md5(local_path)
+        remote_dir = f"{REMOTE_DIR}/files/{local_md5[:12]}"
+        remote = f"{remote_dir}/{os.path.basename(local_path)}"
+        if not self._remote_file_matches(remote, local_md5):
+            self._shell([f"mkdir -p {shlex.quote(remote_dir)}"])
+            self._push_file(local_path, remote)
         self._pushed[local_path] = remote
         return remote
 
-    def _sync_dir(self, local_dir, tag, chmod_exec=False):
+    @staticmethod
+    def _model_dir_tag(local_dir: str) -> str:
+        abs_dir = os.path.abspath(local_dir).rstrip("/")
+        digest = hashlib.md5(abs_dir.encode("utf-8")).hexdigest()[:8]
+        name = os.path.basename(abs_dir) or "root"
+        return f"models/{name}_{digest}"
+
+    def _sync_dir(self, local_dir, tag, chmod_exec=False, clean_stale=False):
         """Push a local directory to a cached remote dir (used for bin & models)."""
         local_dir = os.path.abspath(local_dir)
         if tag in self._synced:
             return self._synced[tag]
         remote = REMOTE_DIR + "/" + tag
         self._shell([f"mkdir -p {shlex.quote(remote)}"])
-        for name in sorted(os.listdir(local_dir)):
-            if name.startswith("."):
-                continue
+        local_files = [
+            name
+            for name in sorted(os.listdir(local_dir))
+            if not name.startswith(".") and os.path.isfile(os.path.join(local_dir, name))
+        ]
+        if clean_stale:
+            rc, out = self._shell([f"ls -1 {shlex.quote(remote)} 2>/dev/null"])
+            if rc == 0 and out:
+                keep = set(local_files)
+                stale = [
+                    line.strip()
+                    for line in out.splitlines()
+                    if line.strip()
+                    and line.strip() not in (".", "..")
+                    and "/" not in line
+                    and line.strip() not in keep
+                ]
+                if stale:
+                    rm_args = " ".join(
+                        shlex.quote(f"{remote}/{name}") for name in stale
+                    )
+                    self._shell([f"rm -f {rm_args}"])
+        for name in local_files:
             path = os.path.join(local_dir, name)
-            if not os.path.isfile(path):
-                continue
-            self._push_file(path, remote + "/" + name)
-        if chmod_exec:  # adb push resets the exec bit
+            remote_file = remote + "/" + name
+            local_md5 = file_md5(path)
+            if not self._remote_file_matches(remote_file, local_md5):
+                self._push_file(path, remote_file)
+        if chmod_exec and local_files:  # adb push resets the exec bit
             self._shell([f"chmod 755 {shlex.quote(remote)}/*"])
         self._synced[tag] = remote
         return remote
@@ -317,7 +373,7 @@ class AdbPlatform(BasePlatform):
             for m in self.cfg.get("models") or []:
                 mdir = m.get("dir")
                 if mdir and os.path.isdir(mdir) and os.path.abspath(arg) == os.path.abspath(mdir):
-                    return self._sync_dir(mdir, "models/" + os.path.basename(os.path.abspath(mdir).rstrip("/")))
+                    return self._sync_dir(mdir, self._model_dir_tag(mdir))
             return arg
         if not os.path.isfile(arg):
             return arg
@@ -326,7 +382,7 @@ class AdbPlatform(BasePlatform):
             if not mdir or not os.path.isdir(mdir):
                 continue
             if os.path.abspath(os.path.dirname(os.path.abspath(arg))) == os.path.abspath(mdir):
-                tag = "models/" + os.path.basename(os.path.abspath(mdir).rstrip("/"))
+                tag = self._model_dir_tag(mdir)
                 remote = self._sync_dir(mdir, tag)
                 return remote + "/" + os.path.basename(arg)
         return self._push(arg)
@@ -348,7 +404,7 @@ class AdbPlatform(BasePlatform):
         if in_bin_dir:
             # Dynamic-linked engine tools (RPATH $ORIGIN): sync the whole dir
             # and run with LD_LIBRARY_PATH pointing at the synced libraries.
-            self._sync_dir(bin_dir, "bin", chmod_exec=True)
+            self._sync_dir(bin_dir, "bin", chmod_exec=True, clean_stale=True)
             remote_cmd.append("./" + os.path.basename(arg0))
         else:
             remote_cmd.append(self._map_arg(arg0))
@@ -377,7 +433,9 @@ class AdbPlatform(BasePlatform):
     def run(self, cmd, log_path: str, cwd=None, echo=True) -> int:
         os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
         shell_script = self._deploy_command(cmd)
-        proc = self._exec(["shell", shell_script], timeout=600)
+        raw_timeout = (self.cfg.get("methodology") or {}).get("timeout_s")
+        timeout = 600 if raw_timeout is None else raw_timeout
+        proc = self._exec(["shell", shell_script], timeout=timeout)
         out = proc.stdout
         with open(log_path, "w", encoding="utf-8") as fh:
             fh.write(out)

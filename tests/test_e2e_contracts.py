@@ -288,7 +288,10 @@ async def test_mcp_real_subprocess_integration(tmp_path, monkeypatch):
             await c.call_tool("run", {"config": str(cfg), "expect_handoff": str(bad_handoff)})
         assert not list((tmp_path / "results").glob("run_*"))
 
+        before_snaps = set((tmp_path / "results").glob("env_snapshot_*.json"))
         run_res = (await c.call_tool("run", {"config": str(cfg), "expect_handoff": str(good_handoff)})).data
+        after_snaps = set((tmp_path / "results").glob("env_snapshot_*.json"))
+        assert before_snaps == after_snaps
         assert run_res["handoff_check"]["match"] is True
         rec_path = run_res["run"]["records"]
 

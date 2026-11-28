@@ -64,6 +64,7 @@ async def test_run_handoff_anchor_ok(fake_cli, tmp_path):
                                          "expect_handoff": str(h)})).data
     assert out["handoff_check"]["match"] is True
     assert [v for v, *_ in calls] == ["env", "run"]     # 前置校验通过后才 run
+    assert ("env", ["--config", "m.yml", "--no-save"]) in calls
 
 
 async def test_handoff_consumes_real_engopt_shape(fake_cli, tmp_path):

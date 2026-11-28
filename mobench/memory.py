@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import copy
 import csv
-import datetime
 import html
 import json
 import os
@@ -16,7 +15,9 @@ import sys
 import time
 
 from mobench.adapters.base import AdapterError, get_adapter
+from mobench.artifacts_hash import artifact_set_md5
 from mobench.config import ConfigError, load_config
+from mobench.io_utils import atomic_write_json, make_run_dir
 from mobench.platform.base import BasePlatform, PlatformError, measurement_session
 
 DEFAULT_INTERVAL = 0.2
@@ -125,17 +126,15 @@ def mem_pipeline(cfg, model_id=None, threads=None, prompt=None, gen=None,
     c["workload"] = work
     cmd = get_adapter(c).build_cmds(m, threads, rounds=1)[0]
     results_dir = cfg.get("results_dir", "results")
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = os.path.join(results_dir, f"mem_{ts}")
     bench = (cfg.get("build") or {}).get("bench_bin", "llm_bench")
     samples = []          # (t_sec, rss_kb)
-    raw_log = os.path.join(out_dir, "status_samples.log")
     start = time.monotonic()
     gone = 0              # consecutive polls without a pid before we stop
     try:
         # 与 run/profile 共用 measurement_session：即使创建目录或 spawn 抛错也能保证 restore
         with measurement_session(platform, cfg, threads, info=info) as condition:
-            os.makedirs(out_dir, exist_ok=True)
+            ts, out_dir = make_run_dir(results_dir, "mem")
+            raw_log = os.path.join(out_dir, "status_samples.log")
             proc = platform.spawn_engine(cmd)
             try:
                 with open(raw_log, "w", encoding="utf-8") as fh:
@@ -192,12 +191,17 @@ def mem_pipeline(cfg, model_id=None, threads=None, prompt=None, gen=None,
         w.writerow(["t_sec", "rss_kb"])
         w.writerows((round(t, 3), v) for t, v in samples)
 
+    binary_info = (
+        {"path": binary, "md5": artifact_set_md5(binary), "md5_scope": "artifact_set(binary+*.so*)"}
+        if os.path.isfile(binary)
+        else {"path": binary, "md5": platform.file_md5(binary)}
+    )
     meta = {
         "schema": "mobench/mem@1",
         "timestamp": ts,
         "engine": cfg["engine"],
         "engine_version": engine_version,
-        "binary": {"path": binary, "md5": platform.file_md5(binary)},
+        "binary": binary_info,
         "model": m["id"], "threads": threads,
         "prompt_tokens": prompt, "gen_tokens": gen,
         "platform": info,
@@ -214,8 +218,7 @@ def mem_pipeline(cfg, model_id=None, threads=None, prompt=None, gen=None,
         with open(os.path.join(out_dir, "mem.html"), "w", encoding="utf-8") as fh:
             fh.write(_mem_html(svg, out_dir, peak, steady, cfg["engine"], m["id"]))
         meta["curve_html"] = os.path.join(out_dir, "mem.html")
-    with open(os.path.join(out_dir, "mem.json"), "w", encoding="utf-8") as fh:
-        json.dump(meta, fh, indent=2, ensure_ascii=False)
+    atomic_write_json(os.path.join(out_dir, "mem.json"), meta)
     return meta
 
 

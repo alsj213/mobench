@@ -22,6 +22,7 @@ import sys
 
 from mobench.adapters.base import AdapterError, get_adapter
 from mobench.artifacts_hash import artifact_set_md5
+from mobench.io_utils import atomic_write_json, make_run_dir
 from mobench.platform.base import BasePlatform
 
 
@@ -289,9 +290,11 @@ def run_validation(cfg, config_b=None, out_dir=None, threads=None,
                 "meaningful; refusing before execution: " + "; ".join(diffs))
 
     results_dir = cfg.get("results_dir", "results")
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = out_dir or os.path.join(results_dir, f"validate_{ts}")
-    os.makedirs(out_dir, exist_ok=True)
+    if out_dir:
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        os.makedirs(out_dir, exist_ok=True)
+    else:
+        ts, out_dir = make_run_dir(results_dir, "validate")
 
     sides = {"a": _run_side(cfg, config_path, "a", model, adapter, platform,
                             threads, out_dir, json_mode)}
@@ -321,8 +324,7 @@ def run_validation(cfg, config_b=None, out_dir=None, threads=None,
     }
     path = os.path.join(out_dir, "validate.json")
     artifact["path"] = path
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(artifact, fh, indent=2, ensure_ascii=False)
+    atomic_write_json(path, artifact)
     return artifact
 
 

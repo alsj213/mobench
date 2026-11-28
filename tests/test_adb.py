@@ -179,14 +179,15 @@ def test_run_syncs_model_dir_for_mnn_llm(tmp_path, monkeypatch):
     # Act
     rc = platform.run([str(bin_path), "-m", str(model_dir / "config.json")], str(log))
 
-    # Assert: model dir synced to mobench/models/<name>; -m remapped to its config
+    # Assert: model dir synced to mobench/models/<name>_<hash>; -m remapped to its config
     assert rc == 0
-    remote_model = [p for p in payload["pushed"] if "mobench/models/qwen-mnn/" in p]
+    expected_tag = AdbPlatform._model_dir_tag(str(model_dir))
+    assert "models/qwen-mnn_" in expected_tag
+    remote_model = [p for p in payload["pushed"] if f"mobench/{expected_tag}/" in p]
     names = sorted(p.rsplit("/", 1)[-1] for p in remote_model)
     assert names == ["config.json", "llm.mnn.weight"]
     script = payload["shell_cmds"][-1]
-    assert ("-m /data/local/tmp/mobench/models/qwen-mnn/config.json"
-            in script)
+    assert f"-m /data/local/tmp/mobench/{expected_tag}/config.json" in script
     assert "cd /data/local/tmp/mobench &&" in script
 
 
@@ -211,10 +212,12 @@ def test_run_maps_model_folder_arg(tmp_path, monkeypatch):
 
     # Assert: folder arg remapped to synced remote dir; model pushed
     assert rc == 0
-    assert any(p.endswith("/squeezenet.mnn") and "models/cv-models" in p
+    expected_tag = AdbPlatform._model_dir_tag(str(model_dir))
+    assert "models/cv-models_" in expected_tag
+    assert any(p.endswith("/squeezenet.mnn") and expected_tag in p
                for p in payload["pushed"])
     script = payload["shell_cmds"][-1]
-    assert "/data/local/tmp/mobench/models/cv-models" in script
+    assert f"/data/local/tmp/mobench/{expected_tag}" in script
 
 
 # -- push timeout scales with payload ---------------------------------------
@@ -281,14 +284,12 @@ def test_push_file_passes_scaled_timeout(tmp_path, monkeypatch):
 
 
 def test_temp_c_takes_hottest_zone(monkeypatch):
-    """2026-10-09 教训：取第一个 zone 落在不敏感区（aoss 36°C vs CPU 60°C）。"""
+    """单 shell 按行配对读取 zone|temp，取最热区。"""
     # Arrange
     platform = AdbPlatform(make_cfg())
 
     def fake_shell(cmd, timeout=120):
-        if cmd[1].endswith("/type"):
-            return 0, "aoss0-usr\ncpu-1-7-usr\n"
-        return 0, "36000\n60100\n"
+        return 0, "aoss0-usr|36000\ncpu-1-7-usr|60100\n"
 
     monkeypatch.setattr(platform, "_shell", fake_shell)
 
@@ -318,8 +319,8 @@ def test_sample_thermal_combines_temp_and_freq(monkeypatch):
     platform = AdbPlatform(make_cfg())
 
     def fake_shell(cmd, timeout=120):
-        if "thermal_zone" in cmd[1]:
-            return 0, "40000\n"
+        if "thermal_zone" in cmd[0]:
+            return 0, "cpu-0|40000\n"
         return 0, "2000000\n"
 
     monkeypatch.setattr(platform, "_shell", fake_shell)
@@ -339,7 +340,7 @@ def test_deploy_parts_quotes_spaces_and_metacharacters(tmp_path, monkeypatch):
     cfg = make_cfg()
     cfg["build"] = {"bin_dir": str(bin_dir), "bench_bin": "llama-bench"}
     plat = AdbPlatform(cfg)
-    monkeypatch.setattr(plat, "_sync_dir", lambda d, tag, chmod_exec=False: "/data/local/tmp/mobench/" + tag)
+    monkeypatch.setattr(plat, "_sync_dir", lambda d, tag, chmod_exec=False, **kw: "/data/local/tmp/mobench/" + tag)
     monkeypatch.setattr(plat, "_push", lambda p: "/data/local/tmp/mobench/my model;id.gguf")
 
     # Act
@@ -403,3 +404,152 @@ def test_remote_helpers_quote_arguments(monkeypatch):
     assert seen[0] == ["pidof 'my bench;id'"]
     assert seen[1] == ["cat '/proc/123;id/status'"]
     assert seen[2] == ["cat '/data/local/tmp/a b.txt'"]
+
+
+def test_preflight_rejects_device_substring_when_offline(monkeypatch):
+    cfg = {"platform": {"type": "adb", "adb": "/fake/adb", "device_id": "my-device-1"},
+           "engine": "llamacpp"}
+    for status in ("offline", "unauthorized", "recovery"):
+        monkeypatch.setattr(
+            adb_mod.subprocess,
+            "run",
+            fake_devices_list(["List of devices attached", f"my-device-1\t{status}"]),
+        )
+        platform = AdbPlatform(cfg)
+        with pytest.raises(PlatformError, match="not online"):
+            platform.preflight()
+
+
+def test_temp_c_single_shell_handles_missing_type_without_misalignment(monkeypatch):
+    platform = AdbPlatform(make_cfg())
+    monkeypatch.setattr(
+        platform,
+        "_shell",
+        lambda cmd, timeout=120: (0, "|36000\ncpu-1-7-usr|61500\nbad|N/A\n|55000\n"),
+    )
+    info = platform._temp_c()
+    assert info["value"] == 61.5
+    assert info["zone"] == "cpu-1-7-usr"
+
+    monkeypatch.setattr(platform, "_shell", lambda cmd, timeout=120: (0, "|55000\n"))
+    info2 = platform._temp_c()
+    assert info2["value"] == 55.0
+    assert info2["zone"] is None
+
+
+def test_same_basename_model_dirs_do_not_collide(tmp_path, monkeypatch):
+    dir_a = tmp_path / "dirA" / "qwen"
+    dir_b = tmp_path / "dirB" / "qwen"
+    for d, content in ((dir_a, b"A"), (dir_b, b"B")):
+        d.mkdir(parents=True)
+        (d / "config.json").write_bytes(content)
+    cfg = make_cfg()
+    cfg["models"] = [
+        {"id": "qa", "path": str(dir_a / "config.json"), "dir": str(dir_a)},
+        {"id": "qb", "path": str(dir_b / "config.json"), "dir": str(dir_b)},
+    ]
+    payload = {"pushed": [], "shell_cmds": []}
+    monkeypatch.setattr(adb_mod.subprocess, "run", _fake_push_shell(payload))
+    platform = AdbPlatform(cfg)
+    remote_a = platform._map_arg(str(dir_a / "config.json"))
+    remote_b = platform._map_arg(str(dir_b / "config.json"))
+    assert remote_a != remote_b
+    assert remote_a.endswith("/config.json") and remote_b.endswith("/config.json")
+
+
+def test_cross_instance_skips_push_when_remote_md5_matches(tmp_path, monkeypatch):
+    from mobench.io_utils import file_md5
+
+    model = tmp_path / "m.gguf"
+    model.write_bytes(b"MODEL-CONTENT")
+    model_md5 = file_md5(model)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    bench = bin_dir / "llama-bench"
+    bench.write_text("#!/bin/sh\n", encoding="utf-8")
+    bench_md5 = file_md5(bench)
+
+    cfg = make_cfg()
+    cfg["build"] = {"bin_dir": str(bin_dir), "bench_bin": "llama-bench"}
+    pushed = []
+
+    class Proc:
+        def __init__(self, rc=0, stdout=""):
+            self.returncode = rc
+            self.stdout = stdout
+            self.stderr = ""
+
+    def fake_run(args, *a, **kw):
+        if "push" in args:
+            pushed.append(args[-1])
+            return Proc(0, "pushed")
+        shell_str = " ".join(args[4:]) if len(args) > 4 else ""
+        if shell_str.startswith("md5sum "):
+            if "m.gguf" in shell_str:
+                return Proc(0, f"{model_md5}  remote\n")
+            if "llama-bench" in shell_str:
+                return Proc(0, f"{bench_md5}  remote\n")
+        return Proc(0, "")
+
+    monkeypatch.setattr(adb_mod.subprocess, "run", fake_run)
+    p2 = AdbPlatform(cfg)
+    p2.run([str(bench), "-m", str(model)], str(tmp_path / "r.log"))
+    assert pushed == []
+
+
+def test_sync_dir_bin_cleans_stale_remote_files_and_keeps_current(tmp_path, monkeypatch):
+    from mobench.io_utils import file_md5
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    bench = bin_dir / "llama-bench"
+    bench.write_text("x", encoding="utf-8")
+    bench_md5 = file_md5(bench)
+
+    shell_cmds = []
+
+    class Proc:
+        def __init__(self, rc=0, stdout=""):
+            self.returncode = rc
+            self.stdout = stdout
+            self.stderr = ""
+
+    def fake_run(args, *a, **kw):
+        shell_str = " ".join(args[4:]) if len(args) > 4 else ""
+        shell_cmds.append(shell_str)
+        if shell_str.startswith("ls -1 "):
+            return Proc(0, "llama-bench\nstale.so\nold-bin\n")
+        if shell_str.startswith("md5sum ") and "llama-bench" in shell_str:
+            return Proc(0, f"{bench_md5}  remote\n")
+        return Proc(0, "")
+
+    monkeypatch.setattr(adb_mod.subprocess, "run", fake_run)
+    plat = AdbPlatform(make_cfg())
+    plat._sync_dir(str(bin_dir), "bin", chmod_exec=True, clean_stale=True)
+
+    rm_cmds = [c for c in shell_cmds if c.startswith("rm -f ")]
+    assert len(rm_cmds) == 1
+    assert "/data/local/tmp/mobench/bin/stale.so" in rm_cmds[0]
+    assert "/data/local/tmp/mobench/bin/old-bin" in rm_cmds[0]
+    assert "llama-bench" not in rm_cmds[0]
+
+
+def test_adb_run_applies_configured_timeout(tmp_path, monkeypatch):
+    cfg = make_cfg()
+    cfg["methodology"] = {"timeout_s": 45}
+    plat = AdbPlatform(cfg)
+    monkeypatch.setattr(plat, "_deploy_command", lambda cmd: "echo ok")
+    seen = {}
+
+    class Proc:
+        returncode = 0
+        stdout = "ok"
+        stderr = ""
+
+    def fake_exec(args, timeout=120):
+        seen["timeout"] = timeout
+        return Proc()
+
+    monkeypatch.setattr(plat, "_exec", fake_exec)
+    plat.run(["echo"], str(tmp_path / "out.log"))
+    assert seen["timeout"] == 45

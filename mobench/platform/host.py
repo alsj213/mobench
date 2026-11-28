@@ -47,19 +47,25 @@ class HostPlatform(BasePlatform):
         best = None
         for path in glob.glob("/sys/class/thermal/thermal_zone*/temp"):
             try:
-                value = int(open(path, encoding="utf-8").read().strip()) / 1000.0
+                with open(path, encoding="utf-8") as fh:
+                    value = int(fh.read().strip()) / 1000.0
             except (ValueError, OSError):
                 continue
             if best is None or value > best:
                 best = value
         if best is not None:
             return {"value": best, "source": "thermal_zone max", "unit": "celsius"}
+        hw_best = None
         for path in glob.glob("/sys/class/hwmon/hwmon*/temp*_input"):
             try:
-                value = int(open(path, encoding="utf-8").read().strip()) / 1000.0
-                return {"value": value, "source": "hwmon", "unit": "celsius"}
+                with open(path, encoding="utf-8") as fh:
+                    value = int(fh.read().strip()) / 1000.0
             except (ValueError, OSError):
                 continue
+            if hw_best is None or value > hw_best:
+                hw_best = value
+        if hw_best is not None:
+            return {"value": hw_best, "source": "hwmon max", "unit": "celsius"}
         return {"value": None, "source": "thermal_zone", "error": "not available"}
 
     def _cpu_freq(self):
@@ -68,7 +74,8 @@ class HostPlatform(BasePlatform):
         for path in glob.glob(
                 os.path.join(_SYSFS_CPU, "cpu*/cpufreq/scaling_cur_freq")):
             try:
-                values.append(int(open(path, encoding="utf-8").read().strip()))
+                with open(path, encoding="utf-8") as fh:
+                    values.append(int(fh.read().strip()))
             except (ValueError, OSError):
                 continue
         if values:
@@ -163,9 +170,27 @@ class HostPlatform(BasePlatform):
     def run(self, cmd, log_path: str, cwd=None, echo=True) -> int:
         cmd = self.with_pin(cmd)
         os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
+        raw_timeout = (self.cfg.get("methodology") or {}).get("timeout_s")
+        timeout = 1800 if raw_timeout is None else raw_timeout
         with open(log_path, "w", encoding="utf-8") as fh:
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE,
-                                  stderr=subprocess.STDOUT, cwd=cwd)
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    cwd=cwd,
+                    timeout=timeout,
+                )
+            except subprocess.TimeoutExpired as exc:
+                partial = exc.stdout or b""
+                partial_text = (
+                    partial.decode("utf-8", errors="replace")
+                    if isinstance(partial, bytes)
+                    else str(partial)
+                )
+                if partial_text:
+                    fh.write(partial_text)
+                raise
             out = proc.stdout.decode("utf-8", errors="replace")
             fh.write(out)
             if echo:  # R7: raw output is shown alongside tables (unless --json)

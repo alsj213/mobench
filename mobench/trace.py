@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import copy
 import csv
-import datetime
 import html
 import json
 import os
@@ -17,7 +16,9 @@ import sys
 import time
 
 from mobench.adapters.base import AdapterError, get_adapter
+from mobench.artifacts_hash import artifact_set_md5
 from mobench.config import ConfigError, load_config
+from mobench.io_utils import atomic_write_json, make_run_dir
 from mobench.platform.base import BasePlatform, PlatformError, measurement_session
 
 _HEAD = re.compile(r"\[(\d+)\]\s+\S+\s+([0-9.]+):")
@@ -144,11 +145,9 @@ def trace_pipeline(cfg, model_id=None, threads=None, dur=20.0,
     cmd = adapter.build_cmds(m, threads, rounds=1)[0]
 
     results_dir = cfg.get("results_dir", "results")
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = os.path.join(results_dir, f"trace_{ts}")
     try:
         with measurement_session(platform, cfg, threads, info=info) as condition:
-            os.makedirs(out_dir, exist_ok=True)
+            ts, out_dir = make_run_dir(results_dir, "trace")
             trace_out = platform.spawn_trace(dur, cats=cats)
             proc = platform.spawn_engine(cmd)
             time.sleep(dur)                 # let the engine run under the capture
@@ -170,10 +169,15 @@ def trace_pipeline(cfg, model_id=None, threads=None, dur=20.0,
     events = list(parse_freq_events(text))
     per_cpu = freq_timeline(events)
     summ = summarize_freq(per_cpu)
+    binary_info = (
+        {"path": binary, "md5": artifact_set_md5(binary), "md5_scope": "artifact_set(binary+*.so*)"}
+        if os.path.isfile(binary)
+        else {"path": binary, "md5": platform.file_md5(binary)}
+    )
     meta = {
         "schema": "mobench/trace@1", "timestamp": ts,
         "engine": cfg["engine"], "engine_version": engine_version,
-        "binary": {"path": binary, "md5": platform.file_md5(binary)},
+        "binary": binary_info,
         "model": m["id"], "threads": threads,
         "platform": info, "condition": condition, "n_freq_events": len(events),
         "source_log": os.path.join(out_dir, "atrace.txt"),
@@ -189,8 +193,7 @@ def trace_pipeline(cfg, model_id=None, threads=None, dur=20.0,
     with open(html_path, "w", encoding="utf-8") as fh:
         fh.write(_html(meta, per_cpu, out_dir))
     meta["trace_html"] = html_path
-    with open(os.path.join(out_dir, "trace.json"), "w", encoding="utf-8") as fh:
-        json.dump(meta, fh, indent=2, ensure_ascii=False)
+    atomic_write_json(os.path.join(out_dir, "trace.json"), meta)
     return meta
 
 

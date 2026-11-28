@@ -42,3 +42,22 @@ def test_artifact_set_md5_ignores_non_so_siblings(tmp_path):
     (tmp_path / "README.txt").write_text("notes", encoding="utf-8")
     (tmp_path / "libggml.a").write_bytes(b"STATIC")
     assert artifact_set_md5(str(binary)) == h_base
+
+
+def test_artifact_set_md5_tracks_versioned_so_files(tmp_path):
+    binary = tmp_path / "llama-bench"
+    binary.write_bytes(b"ELF-BINARY")
+    h_base = artifact_set_md5(str(binary))
+
+    ver_so = tmp_path / "libggml.so.0"
+    ver_so.write_bytes(b"VER-SO-1")
+    h_with_ver = artifact_set_md5(str(binary))
+    assert h_with_ver != h_base
+
+    mnn_ver = tmp_path / "libMNN.so.2.9"
+    mnn_ver.write_bytes(b"MNN-VER-1")
+    h_with_mnn = artifact_set_md5(str(binary))
+    assert h_with_mnn != h_with_ver
+
+    mnn_ver.write_bytes(b"MNN-VER-2")
+    assert artifact_set_md5(str(binary)) != h_with_mnn
