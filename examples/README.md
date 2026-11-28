@@ -4,8 +4,8 @@
 
 ```bash
 python3 -m mobench prepare && python3 -m mobench run
-python3 -m mobench report results/records.jsonl --out results/
-python3 -m mobench stats  results/records.jsonl
+python3 -m mobench report results/ --out results/
+python3 -m mobench stats  results/
 ```
 
 | 示例 | 引擎/工具 | 说明 |

@@ -20,9 +20,9 @@
 
 ---
 
-**mobench** 是**引擎无关**的推理性能基准核心：直接驱动你自己构建的 `llama.cpp`、`MNN`（或任何已注册适配器）原生测速工具完成性能测量、剖析与精度校验。所有测量结果统一沉淀为可溯源记录（`mobench/record@1`），统计、回归、功耗、报告与多面板图表全部由同一份数据驱动。
+**mobench** 是**引擎无关**的推理性能基准核心：直接驱动你自己构建的 `llama.cpp`、`MNN`（或任何已注册适配器）原生测速工具完成性能测量、剖析与精度校验。`mobench run` 的每轮测量统一沉淀为可溯源记录（`mobench/record@1`），`stats`、`regression`、`report` 与多面板图表从 records 重放。`profile`、`memory`、`trace`、`validate` 各自产出带独立 schema 的工件，`power` 从平台功耗文本计算。
 
-**数据可信红线 R1–R11**（见 [`rules/mobile-bench-integrity.md`](rules/mobile-bench-integrity.md) 与 [`agents/mobile-bench-agent.md`](agents/mobile-bench-agent.md)）：不编造数字、不复用旧数据、每值标注原始日志来源、异常降频/高温（>45°C）显式告警不隐瞒。
+**数据可信红线 R1–R11**（见 [`rules/mobile-bench-integrity.md`](rules/mobile-bench-integrity.md) 与 [`agents/mobile-bench-agent.md`](agents/mobile-bench-agent.md)）：不编造数字、不复用旧数据、每值标注原始日志来源、异常降频或高温（>45°C）显式告警不隐瞒。
 
 ## Table of Contents
 
@@ -47,12 +47,12 @@
 
 | 能力 | 说明 |
 |------|------|
-| 引擎无关 | 引擎差异收敛于 `mobench/adapters/`；内置 `llamacpp`、`mnn`，扩展无需改动核心 |
+| 引擎无关 | 引擎逻辑收敛于 `mobench/adapters/`；内置 `llamacpp`、`mnn`。新增引擎需写 adapter，并在 `mobench/config.py` 的 `BUILTIN_ENGINES` 与 schema 的 `engine.enum` 注册 |
 | 框架原生 CLI | 直接调用被测工程原生工具（`llama-bench`、MNN `llm_bench`/`benchmark.out`），无二次包装偏差 |
 | 双平台统一 | 桌面 Linux（`host`）与 Android（`adb`）统一 run 语义；`adb` 自动同步二进制、动态库与模型目录 |
-| 环境控制与门禁 | 支持温度门禁、CPU 绑核（`cpu_pin`）、cpufreq 锁频（`lock_freq`）以及运行中频率降频检测 |
-| 完整可溯源 | 每次测量 tee 原始日志 → canonical records（`mobench/record@1`，含 `source_log`）→ 报告逐值标来源 |
-| 一体化分析套件 | 内置 `stats` / `regression` / `validate` / `profile` / `memory` / `trace` / `power` / `report` / `runs` |
+| 环境控制与门禁 | 支持可选冷却门（`cooldown_c`）、CPU 绑核（`cpu_pin`）、cpufreq 锁频（`lock_freq`）以及每轮前后的热态和频率采样；超过 45°C 会标记降频风险，但不会自动中止 |
+| 完整可溯源 | 每次 run 测量 tee 原始日志 → canonical records（`mobench/record@1`，含 `source_log`）→ 报告按分组标注首个 `source_log` 与轮数 |
+| 一体化分析套件 | 内置 `stats`、`regression`、`validate`、`profile`、`memory`、`trace`、`power`、`report`、`runs` |
 | MCP 工具面 | 原生提供 MCP server，便于 AI Agent 以可审计、fail-fast 的方式驱动基准测试 |
 
 ## Quickstart
@@ -64,7 +64,7 @@ cd mobench
 pip install -e .
 
 # 2. 准备配置文件 mobench.yml（模板见 examples/ 与 configs/templates/）
-mobench prepare --config mobench.yml          # 自备校验 / 下载(sha256) / 借用引擎工具转换
+mobench prepare --config mobench.yml          # 自备校验 / 下载（可选 sha256 校验）/ 借用引擎工具转换
 mobench run     --config mobench.yml          # 完整流水线 -> records.jsonl + run.json
 mobench stats   results/                      # mean / std / CV / P50 / P90 / P99
 mobench report  results/ --out results/       # Markdown + HTML 报告
@@ -98,7 +98,7 @@ mobench --help                   # 12 个子命令
 
 ### 作为 Claude Code 插件
 
-本仓库同时包含 Claude Code 插件定义（[`.claude-plugin/`](.claude-plugin/plugin.json) 与 [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json)），提供领域 `skills/`、`agents/` 与数据真实性 `rules/`。在 Claude Code 中通过 marketplace 注册并安装：
+本仓库同时包含 Claude Code 插件定义（[`.claude-plugin/`](.claude-plugin/plugin.json) 与 [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json)），提供领域 `skills/`、`agents/` 与数据真实性 `rules/`。项目内另有 `.agents/skills/verify-mobench/` 真机端到端验证技能。在 Claude Code 中通过 marketplace 注册并安装：
 
 ```text
 /plugin marketplace add alsj213/mobench
@@ -144,24 +144,24 @@ results_dir: results
 
 ## Usage
 
-`mobench` 提供 **12 个确定性子命令**（支持 `--version` / `-V`；除 `report` 外均支持 `--json` 稳定输出，失败以非零码退出）：
+`mobench` 提供 **12 个确定性子命令**（支持 `--version` 和 `-V`；除 `report` 外均支持 `--json` 稳定输出，失败以非零码退出）：
 
 | 子命令 | 作用 |
 |--------|------|
-| `prepare [model_ids]` | 模型准备三态：自备校验 / 下载 + sha256 / 借用引擎工具转换（`convert_with`） |
-| `env` | 环境快照：平台身份 + 温度 / 引擎版本 / binary 与 model MD5（每字段附来源命令；支持 `--no-save` 跳过写文件） |
-| `run` | 完整基准流水线：preflight → 冷却门 → 版本/哈希 → 模型检查 → 环境控制 → 每轮热态/频门禁与日志探针 → records |
-| `profile` | 性能剖面采样：host `perf` / adb `simpleperf`，产出火焰图、热点 top 与 IPC 统计 |
+| `prepare [model_ids]` | 模型准备三态：自备校验 / 下载（可选 sha256 校验）/ 借用引擎工具转换（`convert_with`） |
+| `env` | 环境快照：平台身份 + 温度 / 引擎版本 / binary 的 artifact-set MD5（二进制加同目录 `*.so*`）与 model MD5（每字段附来源命令；支持 `--no-save` 跳过写文件） |
+| `run` | 完整基准流水线：preflight → 版本与二进制探针 → 构建配方校验 → 模型检查 → 方法学校验 → run 目录与哈希 → 环境控制 → 冷却门 → 每轮热态/频门禁与日志探针 → records |
+| `profile` | 性能剖面采样：host 用 `perf`，adb 用 `simpleperf`，产出火焰图、热点 top 与 IPC 统计 |
 | `memory` | 内存采样（**当前仅支持 Android `adb`**）：在长序列运行期间轮询进程 RSS，输出内存曲线与峰值 |
 | `trace` | 频率追踪（**当前仅支持 Android `adb`**）：采集运行期间的 `atrace` CPU 频率轨迹 |
-| `stats <inputs…>` | 分组统计 mean / std（样本标准差）/ CV / P50 / P90 / P99，CV > 5% 自动告警；默认跳过无效 run（支持 `--include-invalid`） |
+| `stats <inputs…>` | 分组统计 mean、std（样本标准差）、CV、P50、P90、P99，CV > 5% 自动告警；默认跳过无效 run（支持 `--include-invalid`） |
 | `report <inputs…> --format md\|html\|both\|chart` | 带来源标注的基准报告（高温 >45°C 自动打降频横幅）；默认跳过无效 run（支持 `--include-invalid`）；`chart` 支持 `--chart-by backend\|engine\|matrix` |
-| `regression save\|compare` | 基线保存与跨 commit 回归对比（Mann-Whitney 显著性检验、`--threshold` 与 `--include-invalid`） |
-| `validate run\|compare` | 精度校验门禁：`run` 产出自描述 `validate.json`；`compare` 离线判定 `PASS/WARN=0`、`FAIL=2`、不可比=`1` |
-| `power` | 能耗分析：每推理能耗（J）与 perf/Watt（消费 RAPL / batterystats 文本；传 `--duration` 计算平均功率） |
-| `runs` | 历史运行索引：扫描 `results/` 下所有 `run.json`，汇总时间、标签、产物 MD5、记录数与审计状态 |
+| `regression save\|compare` | 基线保存与跨 commit 回归对比（两侧样本都 ≥5 且安装 scipy 时做 Mann-Whitney 显著性检验，否则退化为描述性对比；`--threshold` 与 `--include-invalid`） |
+| `validate run\|compare` | 精度校验门禁：`run` 产出自描述 `validate.json`；`compare` 离线判定 `PASS` 和 `WARN` 为 0，`FAIL` 为 2，不可比为 1 |
+| `power` | 能耗分析：`--source` 传入 RAPL / batterystats 文本；`--inference-count` 算每推理能耗（J），`--throughput` 加 `--duration` 算 perf/Watt 和平均功率 |
+| `runs` | 历史运行索引：扫描 `results/` 下所有 `run.json`，汇总时间、标签、产物 MD5（artifact-set）、记录数与审计状态 |
 
-`run` 支持常用覆盖参数：`--config` / `--engine` / `--model` / `--threads` / `--rounds` / `--label` / `--cooldown-c` / `--cooldown-per-round` / `--max-attempts`。
+`run` 支持常用覆盖参数：`--config`、`--engine`、`--model`、`--threads`、`--rounds`、`--label`、`--cooldown-c`、`--cooldown-per-round`、`--max-attempts`。
 
 ### 精度校验（`validate`）
 
@@ -183,12 +183,12 @@ validation:
 
 ## Engine support
 
-引擎差异仅存在于 **adapter**（命令拼装 + 输出解析），核心无引擎耦合：
+引擎差异仅存在于 **adapter**（命令拼装 + 输出解析），执行与分析核心不出现引擎分支：
 
 | engine | 被测工具 | 命令形态 | 输出解析 |
 |--------|---------|----------|----------|
 | `llamacpp` | llama.cpp `llama-bench` | `-m <gguf> -t N -r 1 -o json [-p -n]` | 新版 `-o json` 顶层数组（`avg_ts`）→ `prompt_eval_ms_tok` / `gen_tok_s` / `gen_ms_tok`；旧版 `--json` 经 `llamacpp: {output: --json}` 回退 |
-| `mnn`（LLM） | MNN `llm_bench` | `-m <config.json> -a cpu -c 2 -t N [-p -n]` | stdout `pp<n>` / `tg<n>` + `t/s` 表格 |
+| `mnn`（LLM） | MNN `llm_bench` | `-m <config.json> -a <backend> -c 2 -t N -fa 0 [-p -n] [-rep N]` | stdout `pp<n>` / `tg<n>` + `t/s` 表格 |
 | `mnn`（CV/NLP） | MNN `benchmark.out` | `<模型目录> 1 1 0 N 2` | `max/min/avg` summary 行 → `latency_ms` + `fps`；兼容 JSON / `key: value` |
 | 自定义扩展 | 任意原生测速工具 | 自由定义 | 实现 `EngineAdapter` 即可复用全套分析/报告 |
 
@@ -199,8 +199,11 @@ mobench/                  # 确定性 Python 编排核心
 ├── cli.py                #   12 子命令 CLI 入口
 ├── config.py             #   mobench.yml 载入与校验（BUILTIN_ENGINES）
 ├── records.py            #   canonical records: mobench/record@1 JSONL（source_log 溯源）
+├── artifacts_hash.py     #   artifact-set MD5（binary + 同目录 *.so*）
+├── build_recipe.py       #   构建配方校验（CMakeCache）
+├── log_probe.py          #   每轮日志探针（forbid / expect）
 ├── adapters/             #   引擎唯一耦合点（base.py + llamacpp.py / mnn.py）
-├── platform/             #   host / adb（preflight·温度·绑核锁频·run/tee·restore）
+├── platform/             #   host / adb（preflight·温度·绑核锁频·run/tee·restore；cpu.py 解析 cpufreq policy 与取核）
 ├── run.py                #   基准执行流水线、冷却门与每轮热态/频率有效性检查
 ├── validation.py         #   精度校验仪器执行（greedy / ppl）
 ├── profiling.py          #   perf / simpleperf 采样与热点统计
@@ -220,15 +223,18 @@ schema/                   # mobench.schema.json
 scripts/                  # 辅助脚本（mobench / verify.py / md2report.py）
 tools/                    # WSL→Windows adb 路径映射包装脚本
 skills/                   # 10 个领域知识 skill（Claude Code 插件）
+.agents/skills/           # 项目内控制面 skill（verify-mobench：真机端到端验证）
 agents/                   # mobile-bench-agent.md（7 步协议 + R1–R11）
 rules/                    # 数据真实性强制规则（R1–R11）
 docs/                     # 适配器接入指南、MCP 示例与架构设计文档
 tests/                    # pytest 单元测试与端到端测试套件
 ```
 
+`mobench/` 目录清单可用 `git ls-files mobench` 核对。
+
 ## MCP server
 
-`mobench` 可作为 MCP server 暴露给 AI Agent——所有工具经 `python -m mobench <verb> …` 子进程执行，核心零改动，失败原样带 stderr 抛错（R4）：
+`mobench` 可作为 MCP server 暴露给 AI Agent。所有工具经 `python -m mobench <verb> …` 子进程执行，核心零改动，失败带 stderr 抛错（R4；stderr 截断到末尾 800 字符）：
 
 ```bash
 pip install -e ".[mcp]"
@@ -237,8 +243,8 @@ python3 -m mobench.mcp_server    # stdio 模式启动
 
 | 工具 | 参数 | 作用 |
 |------|------|------|
-| `env` | `config` | 环境快照：平台身份 + 温度 / 引擎版本 / binary 与 model MD5 |
-| `run` | `config`，可选 `expect_handoff` / `overrides` | 执行基准；`expect_handoff` 指向含 `{"binary_md5": "<md5>"}` 的清单 JSON，开跑前校验实测二进制 MD5（fail-fast） |
+| `env` | `config` | 环境快照：平台身份 + 温度 / 引擎版本 / binary 的 artifact-set MD5（二进制加同目录 `*.so*`）与 model MD5 |
+| `run` | `config`，可选 `expect_handoff` / `overrides` | 执行基准；`expect_handoff` 指向含 `{"binary_md5": "<md5>"}` 的清单 JSON，开跑前校验 `env` 输出的 `binary.md5`（artifact-set MD5，fail-fast） |
 | `profile` | `config`，可选 `extra` | 性能剖面采样（`flamegraph` / `top` / IPC） |
 | `stats` | `inputs: list[str]`，可选 `extra` | 分组统计（records 文件或目录） |
 | `regression` | `action`（`save`/`compare`），可选 `extra` | 基线保存与显著性回归对比 |
@@ -251,7 +257,7 @@ python3 -m mobench.mcp_server    # stdio 模式启动
 
 ## Extending to a new engine
 
-接入新框架**不需要修改核心**，只需 4 步：
+接入新框架不需要改动执行与分析逻辑，但需要注册。共 4 步：
 
 1. 新增 `mobench/adapters/<engine>.py`（实现 `EngineAdapter` 并导出 `ADAPTER`）
 2. 在 `mobench/config.py` 的 `BUILTIN_ENGINES` 中添加 engine key
@@ -267,12 +273,12 @@ pip install -e ".[dev]"
 python3 scripts/verify.py
 ```
 
-`scripts/verify.py` 串行执行字节码编译、版本号一致性、Schema/YAML 校验、仓库卫生、AST 守门（`BasePlatform` 签名一致性 / 禁用裸 `open()` / 核心模块无引擎硬编码）、无可选依赖纯核心导入冒烟、`ruff` 与 `pytest` 分支覆盖率门禁（`>= 80%`）。测试套件涵盖 CLI、配置校验、双平台（host / mock adb）、引擎适配器、统计/回归/精度校验、火焰图与 MCP server（GitHub Actions 在 Python 3.10–3.13 矩阵持续验证）。
+`scripts/verify.py` 串行执行字节码编译、版本号一致性、Schema 和 YAML 校验、仓库卫生、AST 守门（`BasePlatform` 签名一致性、禁用裸 `open()`、核心模块无引擎硬编码）、无可选依赖纯核心导入冒烟、`ruff` 与 `pytest` 分支覆盖率门禁（`>= 80%`）。测试套件涵盖 CLI、配置校验、双平台（host 和 mock adb）、引擎适配器、统计、回归、精度校验、火焰图与 MCP server（GitHub Actions 在 Python 3.10 到 3.13 矩阵持续验证）。真机端到端验证见 [`.agents/skills/verify-mobench/SKILL.md`](.agents/skills/verify-mobench/SKILL.md)，脚本为 `.agents/skills/verify-mobench/scripts/verify_mobench.py`。
 
 ## Known boundaries & Roadmap
 
 - **声明式零代码接入**：当前新引擎需编写轻量 adapter（约 60–120 行）。规划支持在 `mobench.yml` 中声明二进制、参数模板与输出映射的通用适配器。
-- **Android 真机测试**：CI 环境无物理手机，真机路径由 mock 单测与本地实机验证共同覆盖。
+- **Android 真机测试**：CI 环境无物理手机，真机路径由 mock 单测与本地实机验证共同覆盖。真机验证流程见 `.agents/skills/verify-mobench/`。
 - **功耗采集**：消费平台功耗工具输出（RAPL / batterystats 文本），不在核心内置采集守护进程。
 
 ## Contributing
