@@ -261,5 +261,57 @@ def test_parse_llm_bench_preserves_multiple_pp_and_tg_rows(tmp_path):
     pp = [r for r in recs if r["metric"] == "prompt_eval_ms_tok"]
     tg = [r for r in recs if r["metric"] == "gen_tok_s"]
     assert [r["params"]["prompt_tokens"] for r in pp] == [128, 512]
+    # 多长度 pp 记录不得混入无关的 gen_tokens
+    assert all("gen_tokens" not in r["params"] for r in pp)
     assert [r["params"]["gen_tokens"] for r in tg] == [64, 128]
     assert [r["value"] for r in tg] == [50.0, 45.0]
+
+
+def test_parse_llm_bench_dedupes_duplicate_kind_n_rows(tmp_path, capsys):
+    """llm_bench 重复打印同一 (kind, n) 时只保留首次出现，避免样本数虚增。"""
+    cfg = {"engine": "mnn", "workload": {"prompt_tokens": 128, "gen_tokens": 64}}
+    adapter = MnnAdapter(cfg)
+    log = tmp_path / "dup.log"
+    log.write_text(
+        "| q | 1 MiB | CPU | 4 | Low | off | pp128 | 300.0 ± 0.0 |\n"
+        "| q | 1 MiB | CPU | 4 | Low | off | pp128 | 310.0 ± 0.0 |\n"
+        "| q | 1 MiB | CPU | 4 | Low | off | tg64 | 50.0 ± 0.0 |\n"
+        "| q | 1 MiB | CPU | 4 | Low | off | tg64 | 51.0 ± 0.0 |\n",
+        encoding="utf-8",
+    )
+    model = {"id": "q", "path": "/m/q/config.json"}
+
+    recs = adapter.parse(str(log), model, threads=4, round_no=1)
+
+    pp = [r for r in recs if r["metric"] == "prompt_eval_ms_tok"]
+    tg = [r for r in recs if r["metric"] == "gen_tok_s"]
+    assert len(pp) == 1
+    assert len(tg) == 1
+    assert pp[0]["value"] == pytest.approx(1000.0 / 300.0)
+    assert tg[0]["value"] == pytest.approx(50.0)
+    err = capsys.readouterr().err
+    assert "duplicate" in err
+    assert "pp128" in err and "tg64" in err
+
+
+
+def test_parse_single_row_uses_measured_length_over_declared(tmp_path):
+    """单长度但日志实测与 workload 声明不同（cli_args 覆盖）时以日志为准。"""
+    cfg = {"engine": "mnn", "workload": {"prompt_tokens": 128, "gen_tokens": 64}}
+    adapter = MnnAdapter(cfg)
+    log = tmp_path / "single.log"
+    log.write_text(
+        "| q | 1 MiB | CPU | 4 | Low | off | pp512 | 300.0 ± 0.0 |\n"
+        "| q | 1 MiB | CPU | 4 | Low | off | tg128 | 50.0 ± 0.0 |\n",
+        encoding="utf-8",
+    )
+    model = {"id": "q", "path": "/m/q/config.json"}
+
+    recs = adapter.parse(str(log), model, threads=4, round_no=1)
+
+    pp = [r for r in recs if r["metric"] == "prompt_eval_ms_tok"][0]
+    tg = [r for r in recs if r["metric"] == "gen_tok_s"][0]
+    assert pp["params"]["prompt_tokens"] == 512
+    assert pp["params"]["gen_tokens"] == 64   # 声明的 gen 仍保留
+    assert tg["params"]["gen_tokens"] == 128
+    assert tg["params"]["prompt_tokens"] == 128

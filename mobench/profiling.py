@@ -217,6 +217,7 @@ def top_symbols(text: str, limit: int = 25) -> list:
 import glob  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
+import shlex  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
 import sys  # noqa: E402
@@ -226,6 +227,7 @@ from mobench.adapters.base import AdapterError, get_adapter  # noqa: E402
 from mobench.artifacts_hash import artifact_set_md5  # noqa: E402
 from mobench.config import ConfigError, load_config  # noqa: E402
 from mobench.io_utils import atomic_write_json, make_run_dir  # noqa: E402
+from mobench.platform.adb import REMOTE_DIR, AdbPlatform  # noqa: E402
 from mobench.platform.base import BasePlatform, PlatformError, measurement_session  # noqa: E402
 
 DEFAULT_EVENTS = ["cpu-cycles", "instructions", "cache-misses",
@@ -299,11 +301,19 @@ def mirror_bin_dir(bin_dir: str, symfs_root: str) -> str:
     """Mirror local bin products under the device dso path a symfs expects.
 
     report_sample resolves symbols by prepending --symfs to the recorded dso
-    path (``/data/local/tmp/mobench/bin/libMNN.so``), so copy the shipped
-    binaries into that mirrored tree.
+    path. The adb platform now syncs ``bin_dir`` to ``bin/<name>_<hash>`` (so
+    A/B build dirs cannot collide), therefore the mirror must use the *same*
+    tag; an empty ``bin_dir`` keeps the historical ``.../mobench/bin`` path.
     """
-    target = os.path.join(symfs_root, "data/local/tmp/mobench/bin")
+    if bin_dir:
+        tag = AdbPlatform._bin_dir_tag(bin_dir)
+    else:
+        tag = "bin"
+    target = os.path.join(
+        symfs_root, REMOTE_DIR.lstrip("/"), *tag.split("/"))
     os.makedirs(target, exist_ok=True)
+    if not bin_dir:
+        return target
     for name in os.listdir(bin_dir):
         src = os.path.join(bin_dir, name)
         if os.path.isfile(src):
@@ -386,7 +396,8 @@ def _capture_adb(platform, cmd, freq, events, perf_local) -> dict:
         proc = platform._exec(
             [
                 "shell",
-                f"simpleperf report -i {cap['perf_data']} --sort symbol --percent-limit 0.3",
+                f"simpleperf report -i {shlex.quote(cap['perf_data'])} "
+                f"--sort symbol --percent-limit 0.3",
             ],
             timeout=300,
         )
@@ -537,6 +548,10 @@ def profile_pipeline(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
                 )
                 meta["n_samples_folded"] = n_folded
                 meta["flamegraph"] = flame_path
+            else:
+                # report_sample 成功但没有任何可折叠调用栈：显式记录跳过原因。
+                meta["flame_skipped"] = (
+                    "no call stacks folded from report_sample")
             meta["report_sample_stderr"] = err[:400] if err else ""
         else:
             meta["flamegraph"] = ""

@@ -370,7 +370,6 @@ def test_flash_attn_unquoted_yaml_bool_normalized(tmp_path):
 
 
 def test_schema_validates_all_repo_examples_and_templates():
-    import glob
     import json
     from pathlib import Path
     import yaml
@@ -418,3 +417,39 @@ def test_runtime_config_validation_rejects_invalid_workload_and_methodology(
     cfg_path = write_cfg(tmp_path, base + extra)
     with pytest.raises(ConfigError, match=err_match):
         load_config(cfg_path)
+
+
+# -- Wave 5 加固：冷却/超时边界与 schema 对齐 ------------------------------
+
+def test_cooldown_per_round_requires_cooldown_c(tmp_path):
+    cfg_path = write_cfg(
+        tmp_path,
+        "engine: llamacpp\nplatform:\n  type: host\n"
+        "models:\n  - id: t\n    path: m.gguf\n"
+        "methodology:\n  cooldown_per_round: true\n",
+    )
+    with pytest.raises(ConfigError, match="cooldown_per_round requires methodology.cooldown_c"):
+        load_config(cfg_path)
+
+
+def test_timeout_s_below_one_second_rejected(tmp_path):
+    cfg_path = write_cfg(
+        tmp_path,
+        "engine: llamacpp\nplatform:\n  type: host\n"
+        "models:\n  - id: t\n    path: m.gguf\n"
+        "methodology:\n  timeout_s: 0.5\n",
+    )
+    with pytest.raises(ConfigError, match="timeout_s"):
+        load_config(cfg_path)
+
+
+def test_schema_cooldown_and_timeout_bounds_match_config():
+    import json
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    schema = json.loads(
+        (repo / "schema" / "mobench.schema.json").read_text(encoding="utf-8"))
+    props = schema["properties"]["methodology"]["properties"]
+    assert props["cooldown_c"]["minimum"] == 0
+    assert props["timeout_s"]["minimum"] == 1

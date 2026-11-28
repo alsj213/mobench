@@ -90,10 +90,11 @@ def compare(baseline_path, records, threshold_pct=DEFAULT_THRESHOLD_PCT, json_ou
     base_groups, base_meta = load_baseline(baseline_path)
     cur_groups = group_samples(records)
     cur_meta = _find_run_meta(records)
+    matched_keys = [key for key in cur_groups if key in base_groups]
+    unmatched_current = len(cur_groups) - len(matched_keys)
+    unmatched_baseline = sum(1 for key in base_groups if key not in cur_groups)
     rows = []
-    for key in cur_groups:
-        if key not in base_groups:
-            continue
+    for key in matched_keys:
         cur = cur_groups[key]
         base = base_groups[key]
         mean_cur = statistics.fmean(cur)
@@ -130,10 +131,18 @@ def compare(baseline_path, records, threshold_pct=DEFAULT_THRESHOLD_PCT, json_ou
         })
     result = {"rows": rows,
               "base_meta": base_meta,
-              "cur_meta": cur_meta}
+              "cur_meta": cur_meta,
+              "unmatched_current": unmatched_current,
+              "unmatched_baseline": unmatched_baseline}
     if not rows:  # P5: distinguish "all fine" from "nothing to compare"
         result["note"] = ("no overlapping groups between current results "
                           "and baseline (engine/workload/metric/params mismatch?)")
+    elif unmatched_current or unmatched_baseline:
+        # 部分重叠时也必须提示丢弃的组数，避免“只对比了子集”被误读为全量结论。
+        result["note"] = (
+            f"discarded {unmatched_current} current group(s) and "
+            f"{unmatched_baseline} baseline group(s) without a counterpart "
+            "(engine/workload/metric/params mismatch?)")
     return result
 
 

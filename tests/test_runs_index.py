@@ -126,3 +126,53 @@ def test_cli_run_label(tmp_path, monkeypatch, capsys):
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["label"] == "cli-lbl"
+
+
+# -- Wave 5 加固：aborted / cooldown 缺失 / 兜底 INVALID -------------------
+
+def test_rows_expose_aborted_and_cooldown_reached(tmp_path):
+    write_run(tmp_path, "20260101_000001", valid=False, aborted=True,
+              cooldown={"target_c": 40, "reached": False, "temp_c": 52})
+    rows = scan_runs(str(tmp_path))
+    assert rows[0]["aborted"] is True
+    assert rows[0]["cooldown_reached"] is False
+    out = render_rows(rows)
+    assert "ABORTED" in out
+    assert "COOLDOWN-MISS" in out
+    # 已有具体 invalid 标记时不再重复 INVALID
+    assert "INVALID" not in out
+
+
+def test_render_flags_falls_back_to_invalid(tmp_path):
+    write_run(tmp_path, "20260101_000001", valid=False)
+    rows = scan_runs(str(tmp_path))
+    out = render_rows(rows)
+    assert "INVALID" in out
+
+
+def test_rows_detect_cooldown_miss_from_per_round_attempts(tmp_path):
+    """cooldown_per_round=True 无顶层 cooldown，须从 attempts 聚合 COOLDOWN-MISS。"""
+    write_run(
+        tmp_path,
+        "20260101_000002",
+        attempts=[
+            {"round": 1, "attempt": 1, "cooldown": {"target_c": 40, "reached": True, "temp_c": 39}},
+            {"round": 2, "attempt": 1, "cooldown": {"target_c": 40, "reached": False, "temp_c": 49}},
+        ],
+    )
+    rows = scan_runs(str(tmp_path))
+    assert len(rows) == 1
+    assert rows[0]["cooldown_reached"] is False
+    out = render_rows(rows)
+    assert "COOLDOWN-MISS" in out
+
+
+def test_scan_runs_skips_non_dict_run_json(tmp_path):
+    """非 dict JSON（如列表 [1, 2, 3]）的 run.json 不得导致 scan_runs 崩溃。"""
+    bad_dir = tmp_path / "run_20260101_000003"
+    bad_dir.mkdir()
+    (bad_dir / "run.json").write_text("[1, 2, 3]", encoding="utf-8")
+    write_run(tmp_path, "20260101_000004")
+    rows = scan_runs(str(tmp_path))
+    assert len(rows) == 1
+    assert rows[0]["timestamp"] == "20260101_000004"

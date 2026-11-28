@@ -230,6 +230,7 @@
             "null"
           ],
           "default": null,
+          "minimum": 0,
           "description": "Optional pre-run cooldown target temperature in Celsius (hottest thermal zone)."
         },
         "cooldown_max_s": {

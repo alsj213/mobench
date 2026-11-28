@@ -2,7 +2,6 @@
 
 治 THERMAL-DIRTY 事故：5 连跑热降频（1862MHz）的数据直到跑完才被人工发现。
 """
-import pytest
 
 from mobench.config import load_config
 from mobench.platform.base import BasePlatform

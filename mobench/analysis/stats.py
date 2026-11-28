@@ -79,15 +79,20 @@ def _param_label(params):
     return " ".join(f"{k}={v}" for k, v in sorted(params.items()))
 
 
+def _dash(value):
+    return "-" if value in (None, "") else value
+
+
 def render_markdown(rows):
     lines = ["## 多轮统计结果", ""]
-    lines.append("| engine | workload | metric | threads | precision | params | n | mean | std | CV% | P50 | P90 | P99 | 方差 |")
-    lines.append("|--------|----------|--------|---------|-----------|--------|----|------|-----|-----|-----|-----|-----|------|")
+    lines.append("| engine | backend | platform | workload | metric | threads | precision | params | n | mean | std | CV% | P50 | P90 | P99 | 方差 |")
+    lines.append("|--------|---------|----------|----------|--------|---------|-----------|--------|----|------|-----|-----|-----|-----|-----|------|")
     for r in rows:
         s = r["stats"] or {}
         warn = "**HIGH**" if r["high_variance"] else ("insufficient" if not r["samples_min"] else "ok")
         lines.append(
-            f"| {r['engine']} | {r['workload_id']} | {r['metric']} | {r['threads']} | "
+            f"| {r['engine']} | {_dash(r.get('backend'))} | {_dash(r.get('platform'))} | "
+            f"{r['workload_id']} | {r['metric']} | {r['threads']} | "
             f"{r['precision']} | {_param_label(r.get('params'))} | {r['n']} | "
             f"{s.get('mean', 0):.2f} | {s.get('std', 0):.2f} | "
             f"{s.get('cv', 0):.1f} | {s.get('p50', 0):.2f} | {s.get('p90', 0):.2f} | "

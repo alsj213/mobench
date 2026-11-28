@@ -61,3 +61,16 @@ def test_artifact_set_md5_tracks_versioned_so_files(tmp_path):
 
     mnn_ver.write_bytes(b"MNN-VER-2")
     assert artifact_set_md5(str(binary)) != h_with_mnn
+
+
+def test_artifact_set_md5_ignores_so_backup_and_swap_suffixes(tmp_path):
+    """``.so.bak`` / ``.so.swp`` 不是动态库，不得改变工件哈希。"""
+    binary = tmp_path / "llama-bench"
+    binary.write_bytes(b"ELF-BINARY")
+    h_base = artifact_set_md5(str(binary))
+
+    (tmp_path / "libggml.so.bak").write_bytes(b"BACKUP")
+    (tmp_path / "libggml.so.swp").write_bytes(b"SWAP")
+    (tmp_path / "libggml.so.orig").write_bytes(b"ORIG")
+
+    assert artifact_set_md5(str(binary)) == h_base

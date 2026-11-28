@@ -2,7 +2,7 @@
 import pytest
 
 from mobench.platform import host as host_mod
-from mobench.platform.base import BasePlatform, PlatformError
+from mobench.platform.base import BasePlatform
 from mobench.platform.host import HostPlatform
 
 
@@ -107,3 +107,19 @@ def test_host_run_applies_timeout_and_flushes_partial_stdout(tmp_path, monkeypat
         platform.run(["echo", "hi"], str(log))
     assert seen["timeout"] == 12
     assert "partial line" in log.read_text(encoding="utf-8")
+
+
+def test_host_run_zero_output_timeout_still_writes_marker(tmp_path, monkeypatch):
+    platform = HostPlatform({"methodology": {"timeout_s": 7}})
+    log = tmp_path / "empty-timeout.log"
+
+    def fake_run(cmd, **kwargs):
+        raise host_mod.subprocess.TimeoutExpired(cmd, 7, output=b"")
+
+    monkeypatch.setattr(host_mod.subprocess, "run", fake_run)
+    with pytest.raises(host_mod.subprocess.TimeoutExpired):
+        platform.run(["sleep", "99"], str(log))
+
+    text = log.read_text(encoding="utf-8")
+    assert "[mobench] host command timed out after 7s" in text
+    assert text.strip()

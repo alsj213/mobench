@@ -96,6 +96,10 @@ def _param_label(params):
     return " ".join(f"{k}={v}" for k, v in sorted(params.items()))
 
 
+def _dash(value):
+    return "-" if value in (None, "") else value
+
+
 def _src_label(row):
     """Source column: first log anchored; multi-round groups note the total."""
     base = (row.get("source_log") or "").split("/")[-1]
@@ -124,13 +128,14 @@ def render_markdown(rows, records):
     if not rows:
         lines.append("无可用记录。")
         return "\n".join(lines) + "\n"
-    lines.append("| engine | workload | metric | threads | precision | params | 测量条件 | n | mean | CV% | 来源日志 |")
-    lines.append("|--------|----------|--------|---------|-----------|--------|----------|---|------|-----|----------|")
+    lines.append("| engine | backend | platform | workload | metric | threads | precision | params | 测量条件 | n | mean | CV% | 来源日志 |")
+    lines.append("|--------|---------|----------|----------|--------|---------|-----------|--------|----------|---|------|-----|----------|")
     for r in rows:
         cv = f"{r['cv_pct']:.2f}" if r["cv_pct"] is not None else "-"
         src = _src_label(r)
         lines.append(
-            f"| {r['engine']} | {r['workload_id']} | {r['metric']} | "
+            f"| {r['engine']} | {_dash(r.get('backend'))} | {_dash(r.get('platform'))} | "
+            f"{r['workload_id']} | {r['metric']} | "
             f"{r['threads']} | {r['precision']} | {_param_label(r.get('params'))} | "
             f"{r.get('condition', '-')} | {r['n']} | {r['mean']} | {cv} | {src} |"
         )
@@ -144,15 +149,17 @@ def render_html(rows, records):
                   '建议冷却后重跑</p>')
     else:
         banner = ""
-    thead = ("<tr><th>engine</th><th>workload</th><th>metric</th><th>threads</th>"
-             "<th>precision</th><th>params</th><th>测量条件</th><th>n</th><th>mean</th>"
-             "<th>CV%</th><th>来源</th></tr>")
+    thead = ("<tr><th>engine</th><th>backend</th><th>platform</th><th>workload</th>"
+             "<th>metric</th><th>threads</th><th>precision</th><th>params</th>"
+             "<th>测量条件</th><th>n</th><th>mean</th><th>CV%</th><th>来源</th></tr>")
     body = ""
     for r in rows:
         cv = f"{r['cv_pct']:.2f}" if r["cv_pct"] is not None else "-"
         src = html.escape(_src_label(r))
         body += (
             f"<tr><td>{html.escape(str(r['engine']))}</td>"
+            f"<td>{html.escape(str(_dash(r.get('backend'))))}</td>"
+            f"<td>{html.escape(str(_dash(r.get('platform'))))}</td>"
             f"<td>{html.escape(str(r['workload_id']))}</td>"
             f"<td>{html.escape(str(r['metric']))}</td><td>{r['threads']}</td>"
             f"<td>{html.escape(str(r['precision']))}</td>"

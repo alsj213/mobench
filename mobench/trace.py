@@ -41,7 +41,6 @@ def parse_freq_events(text: str):
         if not sm:
             continue
         # sm may match cpu_id= then state= or state= then cpu_id=; decide by index
-        f = sm.start()
         if "state=" in line[i:i + 200] and "cpu_id=" in line[i:i + 200]:
             si = line.find("state=", i)
             ci = line.find("cpu_id=", i)

@@ -1,10 +1,9 @@
 """Report generation tests (benchmark-core 执行流水线与报告: 高温打标)."""
-import json
 
 import pytest
 
 from mobench.records import RECORD_SCHEMA
-from mobench.report import render_html, render_markdown, summarize_rows, throttle_risk
+from mobench.report import render_html, render_markdown, summarize_rows
 
 
 def rec(tmp_path, value=42.7, temp_c=None):
@@ -183,3 +182,34 @@ def test_summarize_rows_zero_mean_and_sample_stdev(tmp_path):
     srows = summarize_rows(recs)
     expected_cv = round(statistics.stdev(vals) / statistics.fmean(vals) * 100, 2)
     assert srows[0]["cv_pct"] == pytest.approx(expected_cv)
+
+
+# -- Wave 5 加固：表格展示 backend / platform -------------------------------
+
+def test_tables_show_backend_and_platform_with_escaping(tmp_path):
+    """统计表必须展示 backend/platform；HTML 单元格做转义。"""
+    r = rec(tmp_path)
+    r["backend"] = "cpu<&>"
+    r["platform"] = "adb"
+    rows = summarize_rows([r])
+
+    md = render_markdown(rows, [r])
+    assert "| engine | backend | platform |" in md
+    assert "| cpu<&> | adb |" in md
+
+    html = render_html(rows, [r])
+    assert "<th>backend</th>" in html and "<th>platform</th>" in html
+    assert "<td>cpu&lt;&amp;&gt;</td>" in html
+    assert "<td>adb</td>" in html
+
+
+def test_tables_render_dash_for_missing_backend_and_platform(tmp_path):
+    r = rec(tmp_path)
+    del r["platform"]          # 既无 backend 也无 platform
+    rows = summarize_rows([r])
+
+    md = render_markdown(rows, [r])
+    html = render_html(rows, [r])
+
+    assert "| llamacpp | - | - |" in md
+    assert "<td>llamacpp</td><td>-</td><td>-</td>" in html

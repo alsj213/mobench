@@ -190,6 +190,8 @@ class HostPlatform(BasePlatform):
                 )
                 if partial_text:
                     fh.write(partial_text)
+                # 即使完全没有输出也要写超时标记：空日志无法区分“无输出”与“没跑”。
+                fh.write(f"\n[mobench] host command timed out after {timeout}s\n")
                 raise
             out = proc.stdout.decode("utf-8", errors="replace")
             fh.write(out)

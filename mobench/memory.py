@@ -132,13 +132,14 @@ def mem_pipeline(cfg, model_id=None, threads=None, prompt=None, gen=None,
         else os.path.basename(binary)
     )
     samples = []          # (t_sec, rss_kb)
-    start = time.monotonic()
     gone = 0              # consecutive polls without a pid before we stop
     try:
         # 与 run/profile 共用 measurement_session：即使创建目录或 spawn 抛错也能保证 restore
         with measurement_session(platform, cfg, threads, info=info) as condition:
             ts, out_dir = make_run_dir(results_dir, "mem")
             raw_log = os.path.join(out_dir, "status_samples.log")
+            # 计时紧贴 spawn：建目录的耗时不进入采样窗口，曲线 t=0 即进程启动。
+            start = time.monotonic()
             proc = platform.spawn_engine(cmd)
             try:
                 with open(raw_log, "w", encoding="utf-8") as fh:

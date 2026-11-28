@@ -7,7 +7,6 @@ import subprocess
 
 import pytest
 
-from mobench.adapters import mnn as mnn_mod
 from mobench.adapters.base import AdapterError
 from mobench.adapters.mnn import MnnAdapter
 from mobench.platform import host as host_mod

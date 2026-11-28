@@ -1,5 +1,4 @@
 """Build-recipe fingerprint checks (测量有效性门禁: required_cmake_args)."""
-import json
 
 import pytest
 

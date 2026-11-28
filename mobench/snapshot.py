@@ -50,7 +50,7 @@ def _binary_md5(cfg):
         binary = get_adapter(cfg).resolve_binary()
         from mobench.artifacts_hash import artifact_set_md5
         return {"path": binary, "md5": artifact_set_md5(binary),
-                "source": "artifact-set md5 (binary + *.so in its dir)"}
+                "source": "artifact-set md5 (binary + *.so* in its dir)"}
     except (AdapterError, OSError) as exc:
         return {"error": str(exc)}
 
