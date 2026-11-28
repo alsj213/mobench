@@ -31,7 +31,7 @@ def summarize(values):
     if not values:
         return None
     mean = statistics.fmean(values)
-    std = statistics.pstdev(values) if len(values) >= 2 else 0.0
+    std = statistics.stdev(values) if len(values) >= 2 else 0.0
     cv = (std / mean * 100.0) if mean else 0.0
     s = sorted(values)
     return {
@@ -61,6 +61,8 @@ def build_rows(records, cv_threshold=CV_WARN_THRESHOLD):
         row = {
             "engine": key[0], "workload_id": key[1], "metric": key[2],
             "threads": key[3], "precision": key[4],
+            "backend": recs[0].get("backend"),
+            "platform": recs[0].get("platform"),
             "params": recs[0].get("params"),
             "n": len(vals),
             "samples_min": len(vals) >= MIN_RUNS,

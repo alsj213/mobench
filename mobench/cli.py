@@ -156,6 +156,8 @@ def build_parser():
     p.add_argument("--results", nargs="+", help="records files/dirs")
     p.add_argument("--baseline", help="baseline.json path")
     p.add_argument("--out", default=None, help="output baseline path for save")
+    p.add_argument("--threshold", type=float, default=5.0,
+                   help="regression alert threshold %% (default 5.0)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_regression)
 
@@ -191,6 +193,8 @@ def build_parser():
     p.add_argument("--inference-count", type=int, help="inferences in the measured window")
     p.add_argument("--throughput", type=float, default=None,
                    help="throughput (FPS or tok/s) for perf/Watt")
+    p.add_argument("--duration", type=float, default=None,
+                   help="measured window duration in seconds (for avg_watts and perf/Watt)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_power)
 
