@@ -32,13 +32,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Check Python bytecode syntax
+      - name: Run unified verification (with ruff and coverage gate)
         run: |
-          python -m compileall -q mobench scripts
-
-      - name: Run pytest with coverage
-        run: |
-          python -m pytest tests/ -q --cov=mobench --cov-report=term-missing --cov-fail-under=80
+          python scripts/verify.py --require-ruff
 
       - name: Verify CLI entrypoint
         run: |
@@ -56,34 +52,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Validate JSON/YAML, Schema, and scan for personal paths or stale refs
+      - name: Run schema, version, AST, and hygiene checks
         run: |
           pip install PyYAML jsonschema
-          python - <<'EOF'
-          import glob, json, yaml
-          import jsonschema
-
-          for p in glob.glob("**/*.json", recursive=True):
-              with open(p, encoding="utf-8") as f:
-                  json.load(f)
-          for p in glob.glob("**/*.yml", recursive=True) + glob.glob("**/*.yaml", recursive=True):
-              with open(p, encoding="utf-8") as f:
-                  yaml.safe_load(f)
-
-          with open("schema/mobench.schema.json", encoding="utf-8") as f:
-              schema = json.load(f)
-          jsonschema.Draft7Validator.check_schema(schema)
-          for p in sorted(glob.glob("examples/**/*.yml", recursive=True) + glob.glob("configs/templates/*.yml")):
-              with open(p, encoding="utf-8") as f:
-                  data = yaml.safe_load(f)
-              jsonschema.validate(instance=data, schema=schema)
-          print("All JSON/YAML files and config templates are valid.")
-          EOF
-          if git grep -n -E '(/home/[a-zA-Z0-9._-]+/|/Users/[a-zA-Z0-9._-]+/|~/project/|[A-Za-z]:\\\\|/mnt/[a-zA-Z]/)' -- ':!.github/workflows/ci.yml' ':!tools/adb-unc-wrapper.sh'; then
-            echo "ERROR: Personal local path detected in tracked files."
-            exit 1
-          fi
-          if git grep -n -E '(openspec/|src/engopt/)' -- ':!.github/workflows/ci.yml'; then
-            echo "ERROR: Stale internal reference detected in tracked files."
-            exit 1
-          fi
+          python scripts/verify.py --skip-pytest

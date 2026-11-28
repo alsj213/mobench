@@ -32,7 +32,7 @@ def test_append_and_iter_roundtrip(tmp_path):
     src = tmp_path / "raw.log"
     src.write_text("llama-bench output\n", encoding="utf-8")
     rec_file = tmp_path / "records.jsonl"
-    rec = make_rec(tmp_path, src=str(src), threads=4, round=1)
+    rec = make_rec(tmp_path, source_log=str(src), threads=4, round=1)
 
     # Act
     append_record(str(rec_file), rec)
@@ -50,7 +50,7 @@ def test_optional_fields_normalized(tmp_path):
     src = tmp_path / "raw.log"
     src.write_text("x", encoding="utf-8")
     rec_file = tmp_path / "records.jsonl"
-    rec = make_rec(tmp_path, src=str(src))
+    rec = make_rec(tmp_path, source_log=str(src))
 
     # Act
     append_record(str(rec_file), rec)
@@ -86,7 +86,7 @@ def test_reject_non_numeric_value(tmp_path):
     # Arrange
     src = tmp_path / "raw.log"
     src.write_text("x", encoding="utf-8")
-    rec = make_rec(tmp_path, src=str(src), value="fast")
+    rec = make_rec(tmp_path, source_log=str(src), value="fast")
 
     # Act / Assert
     with pytest.raises(RecordError, match="value"):
@@ -97,7 +97,7 @@ def test_reject_wrong_schema(tmp_path):
     # Arrange
     src = tmp_path / "raw.log"
     src.write_text("x", encoding="utf-8")
-    rec = make_rec(tmp_path, src=str(src), schema="mobench/record@9")
+    rec = make_rec(tmp_path, source_log=str(src), schema="mobench/record@9")
 
     # Act / Assert
     with pytest.raises(RecordError, match="schema"):
@@ -108,7 +108,7 @@ def test_validate_record_empty_for_good(tmp_path):
     # Arrange
     src = tmp_path / "raw.log"
     src.write_text("x", encoding="utf-8")
-    rec = make_rec(tmp_path, src=str(src))
+    rec = make_rec(tmp_path, source_log=str(src))
 
     # Act / Assert
     assert validate_record(rec) == []
@@ -118,12 +118,18 @@ def test_group_key_and_normalize_immutability():
     # Arrange
     rec = {"engine": "mnn", "workload_id": "resnet50", "metric": "latency_ms",
            "threads": 4, "precision": "fp16"}
+    snapshot = dict(rec)
 
     # Act
     key = group_key(rec)
+    norm = normalize_record(rec)
 
     # Assert
     assert key == ("mnn", "resnet50", "latency_ms", 4, "fp16")
+    assert rec == snapshot
+    assert norm is not rec
+    assert norm["gpu"] is False
+    assert norm["backend"] is None
 
 
 def test_read_paths_globs_dir_records(tmp_path):
@@ -132,7 +138,7 @@ def test_read_paths_globs_dir_records(tmp_path):
     src.write_text("x", encoding="utf-8")
     rec_dir = tmp_path / "sub"
     rec_dir.mkdir()
-    rec = make_rec(tmp_path, src=str(src))
+    rec = make_rec(tmp_path, source_log=str(src))
     append_record(str(rec_dir / "records.jsonl"), rec)
 
     # Act
@@ -146,7 +152,7 @@ def test_skip_hand_edited_bad_row(tmp_path):
     # Arrange
     src = tmp_path / "raw.log"
     src.write_text("x", encoding="utf-8")
-    rec = make_rec(tmp_path, src=str(src))
+    rec = make_rec(tmp_path, source_log=str(src))
     rec_file = tmp_path / "records.jsonl"
     append_record(str(rec_file), rec)
     # hand-append a bad row
