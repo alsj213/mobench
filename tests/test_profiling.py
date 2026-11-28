@@ -81,8 +81,9 @@ def test_render_flame_svg_contains_rects():
     svg = flamegraph.render_flame_svg(flamegraph.build_tree(folded), width=800)
     assert svg.startswith("<svg")
     assert "<rect" in svg
-    # widths proportional to share: L8 child ~60% of the 800px band
-    assert "60.00" not in svg or True  # label contains share only when wide enough
+    # 标题元素固定携带各节点真实百分比，不受矩形宽度裁剪影响
+    assert "L8 60.00%" in svg
+    assert "Read 40.00%" in svg
 
 
 def test_flame_html_wraps_themed_document():

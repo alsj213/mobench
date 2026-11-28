@@ -141,7 +141,10 @@ def test_normal_temp_no_throttle_banner(tmp_path):
 
 def test_html_reports_rows_and_escape(tmp_path):
     # Arrange
-    records = [rec(tmp_path, temp_c=40.0)]
+    normal = rec(tmp_path, temp_c=40.0)
+    xss = rec(tmp_path, temp_c=40.0)
+    xss["workload_id"] = "<script>alert(1)</script>"
+    records = [normal, xss]
 
     # Act
     html = render_html(summarize_rows(records), records)
@@ -150,6 +153,8 @@ def test_html_reports_rows_and_escape(tmp_path):
     assert "<table>" in html
     assert "tinyllama" in html
     assert "gen_tok_s" in html
+    assert "<script>" not in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
 
 
 def test_summarize_aggregates_rounds(tmp_path):
