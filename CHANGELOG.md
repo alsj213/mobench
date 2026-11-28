@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 仓库新增 `.gitattributes` 与 `.github/dependabot.yml`，CI 复用 `scripts/verify.py`。
 
 ### Changed
-- Wave 5 代码审查加固：`run` 的配置校验前移，执行期任一失败（非零退出、超时、`forbid`、`restore` 异常）都会原子写出 `valid=false, aborted=true` 的 `run.json`；`runs` 索引新增 `ABORTED` / `COOLDOWN-MISS` / 兜底 `INVALID` 标记。
+- Wave 5 代码审查加固：`run` 的配置校验前移，执行期任一失败（非零退出、超时、`forbid`、`restore` 异常）都会原子写出 `valid=false, aborted=true` 的 `run.json`；`restore` 普通异常统一收敛（`run` 包装为 `RunError("restore", ...)`，共用 `measurement_session` 收敛为 `PlatformError`，主体已失败时仅告警不掩盖原错）；`runs` 索引新增 `ABORTED` / `COOLDOWN-MISS` / 兜底 `INVALID` 标记。
 - ADB `bin` 目录按本地绝对路径哈希隔离并复用 `_sync_dir` 返回值，`run()` 超时落盘部分输出并清理远端孤儿进程；`validate` A/B 使用独立 `platform_b`、单仪器超时降级且双列全挂时退出 1；`mnn` 按 `(kind, n)` 去重并隔离多长度参数；`stats`/`report` 表格补齐 `backend`/`platform` 列。
 - 收紧 `records` 溯源优先级与坏 `run.json` 拦截、`regression` 未匹配组计数提示、`verify.py` 非 git 扫描与 JSON/YAML/Schema 异常兜底，`artifact_set_md5` 仅匹配 `*.so` / `*.so.N*`，并补全 `test` extra 的 `fastmcp` 依赖。
 - 统一 `profile` / `memory` / `trace` 共享 `measurement_session` 生命周期并在 `run.py` 闭合每轮跑前冷却、跑后温度/频率审计与下游无效 run 过滤。
