@@ -68,20 +68,22 @@ def summarize_rows(records):
     for key in order:
         recs = groups[key]
         vals = _values(recs)
-        s = sorted(vals)
+        mean = statistics.fmean(vals)
         row = {
             "engine": key[0], "workload_id": key[1], "metric": key[2],
             "threads": key[3], "precision": key[4],
+            "backend": recs[0].get("backend"),
+            "platform": recs[0].get("platform"),
             "params": recs[0].get("params"),
             "condition": condition_label(recs[0].get("device")),
             "n": len(recs),
-            "mean": round(statistics.fmean(vals), 6),
+            "mean": round(mean, 6),
             "min": round(min(vals), 6),
             "max": round(max(vals), 6),
             "source_log": recs[0].get("source_log"),
         }
         if len(vals) >= 2:
-            row["cv_pct"] = round(statistics.pstdev(vals) / statistics.fmean(vals) * 100, 2)
+            row["cv_pct"] = round(statistics.stdev(vals) / mean * 100, 2) if mean else 0.0
         else:
             row["cv_pct"] = None
         rows.append(row)
@@ -224,24 +226,42 @@ def _collect_chart(records, by="backend"):
     for (plat, wl, stage), series in panels.items():
         engines = {r[0] for r in series}
         multi_engine = len(engines) > 1
+        def _base_label(eng, be, th):
+            b = be if be is not None else f"T{th}"
+            if by == "engine":
+                return eng
+            if by == "matrix":
+                return f"{eng}:{b}"
+            # backend view: disambiguate when several engines share the panel
+            return f"{eng}·{b}" if multi_engine else b
+
+        raw_items = list(series.items())
+        base_labels = [_base_label(eng, be, th) for (eng, be, th), _ in raw_items]
+        label_counts = {}
+        for bl in base_labels:
+            label_counts[bl] = label_counts.get(bl, 0) + 1
+
         series_out = {}
-        for (eng, be, th), xs in series.items():
-            def baselabel():
-                b = be if be is not None else f"T{th}"
-                if by == "engine":
-                    return eng
-                if by == "matrix":
-                    return f"{eng}:{b}"
-                # backend view: disambiguate when several engines share the panel
-                return f"{eng}·{b}" if multi_engine else b
-            lbl = baselabel()
+        for ((eng, be, th), xs), base_lbl in zip(raw_items, base_labels):
+            lbl = base_lbl
+            if label_counts[base_lbl] > 1:
+                # 同一面板多条系列撞名时，按缺失维度（backend / threads）自动消歧，禁止静默覆盖
+                suffix_parts = []
+                if by == "engine" and be is not None:
+                    suffix_parts.append(str(be))
+                if th is not None:
+                    suffix_parts.append(f"T{th}")
+                if suffix_parts:
+                    lbl = f"{base_lbl}·{'·'.join(suffix_parts)}"
+                while lbl in series_out:
+                    lbl = f"{lbl}*"
             points = []
             for x, pt in sorted(xs.items(),
                                 key=lambda kv: (0 if kv[0] == "default" else int(kv[0]))):
                 vals = pt["vals"]
                 mean = statistics.fmean(vals)
                 y = mean if stage == "Decode" else (1000.0 / mean if mean else 0.0)
-                cv = (round(statistics.pstdev(vals) / mean * 100, 2)
+                cv = (round(statistics.stdev(vals) / mean * 100, 2)
                       if len(vals) >= 2 and mean else None)
                 points.append({"x": x, "y": round(y, 3), "mean": round(mean, 4),
                                "n": len(vals), "cv": cv, "src": pt["src"],

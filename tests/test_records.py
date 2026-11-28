@@ -223,3 +223,45 @@ def test_group_key_unchanged_for_legacy_records(tmp_path):
     # Act / Assert
     assert group_key(legacy) == group_key(with_device)
     assert group_key(legacy) == ("llamacpp", "tinyllama", "gen_tok_s", 4, None)
+
+
+def test_read_records_across_cwd_and_moved_run_dir(tmp_path, monkeypatch):
+    # 在 run_orig 内用相对 source_log 写入，随后把整目录搬走并在其它 CWD 读取
+    orig = tmp_path / "workspace_a" / "results" / "run_1"
+    orig.mkdir(parents=True)
+    raw = orig / "raw_m_t4_r1.log"
+    raw.write_text("ok\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path / "workspace_a")
+    rec_path = orig / "records.jsonl"
+    append_record(str(rec_path), make_rec(tmp_path, source_log="results/run_1/raw_m_t4_r1.log"))
+
+    moved_parent = tmp_path / "archive"
+    moved_parent.mkdir()
+    moved = orig.rename(moved_parent / "run_1")
+    elsewhere = tmp_path / "other_cwd"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    got = read_paths([str(moved)])
+    assert len(got) == 1
+    assert got[0]["source_log"].endswith("raw_m_t4_r1.log")
+    assert __import__("os").path.exists(got[0]["source_log"])
+
+
+def test_iter_records_warns_stderr_on_skipped_row(tmp_path, capsys):
+    src = tmp_path / "raw.log"
+    src.write_text("x", encoding="utf-8")
+    rec_file = tmp_path / "records.jsonl"
+    append_record(str(rec_file), make_rec(tmp_path, source_log=str(src)))
+    with open(rec_file, "a", encoding="utf-8") as fh:
+        fh.write('{"schema":"mobench/record@1","engine":"x"}\n')
+    out = list(iter_records(str(rec_file)))
+    assert len(out) == 1
+    assert "skipping invalid record" in capsys.readouterr().err
+
+
+def test_group_key_separates_backend_and_platform(tmp_path):
+    cpu_host = make_rec(tmp_path, backend="cpu", platform="host")
+    ocl_host = make_rec(tmp_path, backend="opencl", platform="host")
+    cpu_adb = make_rec(tmp_path, backend="cpu", platform="adb")
+    assert len({group_key(cpu_host), group_key(ocl_host), group_key(cpu_adb)}) == 3

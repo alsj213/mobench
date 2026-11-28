@@ -215,6 +215,25 @@ def _coverage(val_cfg, instruments) -> dict:
     return coverage
 
 
+def _merge_ab_coverage(cov_a: dict, cov_b: dict) -> dict:
+    """A/B 双列对比时取两侧覆盖交集，任一侧未覆盖则显式标注 NOT COVERED。"""
+    merged = {}
+    for path in ("prefill", "decode"):
+        ca = cov_a.get(path) or {}
+        cb = cov_b.get(path) or {}
+        if ca.get("covered") and cb.get("covered"):
+            merged[path] = dict(ca)
+        elif not ca.get("covered"):
+            merged[path] = dict(ca)
+        else:
+            merged[path] = {
+                "covered": False,
+                "by": cb.get("by") or ca.get("by"),
+                "reason": f"side b: {cb.get('reason') or 'not covered'}",
+            }
+    return merged
+
+
 def run_validation(cfg, config_b=None, out_dir=None, threads=None,
                    config_path=None, config_b_path=None,
                    json_mode=False) -> dict:
@@ -241,7 +260,8 @@ def run_validation(cfg, config_b=None, out_dir=None, threads=None,
     if not models:
         raise ValidationError("config has no models")
     model = models[0]
-    threads = threads or (cfg.get("workload") or {}).get("threads", [4])[0]
+    threads_override = threads
+    threads = threads_override or (cfg.get("workload") or {}).get("threads", [4])[0]
     _check_files(cfg, model, platform)
     controls = build_controls(cfg, model["path"], platform, threads)
 
@@ -256,7 +276,7 @@ def run_validation(cfg, config_b=None, out_dir=None, threads=None,
             raise ValidationError(
                 "A/B configs must declare the same model id as models[0]")
         model_b = models_b[0]
-        threads_b = ((config_b.get("workload") or {}).get("threads") or [threads])[0]
+        threads_b = threads_override or ((config_b.get("workload") or {}).get("threads") or [threads])[0]
         _check_files(config_b, model_b, platform)
         try:
             controls_b = build_controls(config_b, model_b["path"], platform, threads_b)
@@ -276,8 +296,16 @@ def run_validation(cfg, config_b=None, out_dir=None, threads=None,
     sides = {"a": _run_side(cfg, config_path, "a", model, adapter, platform,
                             threads, out_dir, json_mode)}
     if config_b is not None:
-        sides["b"] = _run_side(config_b, config_b_path, "b", model_b, adapter,
+        adapter_b = get_adapter(config_b)
+        sides["b"] = _run_side(config_b, config_b_path, "b", model_b, adapter_b,
                                platform, threads_b, out_dir, json_mode)
+
+    cov_a = _coverage(val_cfg, sides["a"]["instruments"])
+    if "b" in sides:
+        cov_b = _coverage(config_b.get("validation") or {}, sides["b"]["instruments"])
+        coverage = _merge_ab_coverage(cov_a, cov_b)
+    else:
+        coverage = cov_a
 
     artifact = {
         "schema": SCHEMA,
@@ -287,7 +315,7 @@ def run_validation(cfg, config_b=None, out_dir=None, threads=None,
                   "md5": controls["model_md5"]},
         "threads": threads,
         "controls": controls,
-        "coverage": _coverage(val_cfg, sides["a"]["instruments"]),
+        "coverage": coverage,
         "sides": sides,
         "out_dir": out_dir,
     }

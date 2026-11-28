@@ -109,3 +109,39 @@ def test_chart_by_matrix_engine_backend(tmp_path):
 def test_chart_default_multi_engine_prefixes_backend(tmp_path):
     html = report_mod.render_chart_html(_engine_pair(tmp_path), by="backend")
     assert "llamacpp·cpu" in html and "mnn·cpu" in html
+
+
+def test_chart_does_not_overwrite_same_backend_multiple_threads(tmp_path):
+    raw = tmp_path / "raw.log"
+    raw.write_text("raw\n", encoding="utf-8")
+    out = tmp_path / "mt.jsonl"
+    for th, val in [(4, 30.0), (8, 50.0)]:
+        append_record(str(out), {
+            "schema": RECORD_SCHEMA, "engine": "llamacpp",
+            "workload_id": "q", "metric": "gen_tok_s", "value": val,
+            "unit": "tok/s", "threads": th, "backend": "cpu",
+            "precision": "q4", "round": 1,
+            "params": {"prompt_tokens": 512}, "source_log": str(raw),
+        })
+    recs = read_paths([str(out)])
+    data = report_mod._collect_chart(recs, by="backend")
+    assert len(data[0]["series"]) == 2
+    assert "cpu·T4" in data[0]["series"] and "cpu·T8" in data[0]["series"]
+
+
+def test_chart_by_engine_does_not_overwrite_multiple_backends(tmp_path):
+    raw = tmp_path / "raw.log"
+    raw.write_text("raw\n", encoding="utf-8")
+    out = tmp_path / "mb.jsonl"
+    for be, val in [("cpu", 30.0), ("opencl", 50.0)]:
+        append_record(str(out), {
+            "schema": RECORD_SCHEMA, "engine": "mnn",
+            "workload_id": "q", "metric": "gen_tok_s", "value": val,
+            "unit": "tok/s", "threads": 4, "backend": be,
+            "precision": "q4", "round": 1,
+            "params": {"prompt_tokens": 512}, "source_log": str(raw),
+        })
+    recs = read_paths([str(out)])
+    data = report_mod._collect_chart(recs, by="engine")
+    assert len(data[0]["series"]) == 2
+    assert "mnn·cpu·T4" in data[0]["series"] and "mnn·opencl·T4" in data[0]["series"]

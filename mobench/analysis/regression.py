@@ -126,6 +126,7 @@ def compare(baseline_path, records, threshold_pct=DEFAULT_THRESHOLD_PCT, json_ou
             "worse": worse,
             "p_value": round(p_value, 6) if p_value is not None else None,
             "significant": significant,
+            "method": "mannwhitneyu" if p_value is not None else "descriptive",
             "flagged": flagged,
         })
     result = {"rows": rows,
@@ -145,7 +146,9 @@ def _key_params(key):
     """
     parts = []
     for x in key[5:]:
-        if (isinstance(x, tuple) and x
+        if isinstance(x, tuple) and len(x) == 2 and isinstance(x[0], str):
+            parts.append(f"{x[0]}={x[1]}")
+        elif (isinstance(x, tuple) and x
                 and all(isinstance(p, tuple) and len(p) == 2 for p in x)):
             parts.append(" ".join(f"{p[0]}={p[1]}" for p in x))
         else:
@@ -160,7 +163,12 @@ def render_report(result, threshold_pct):
     for r in result["rows"]:
         k = r["key"]  # variable length: base five-tuple + folded params/control
         pv = f"{r['p_value']:.4f}" if r["p_value"] is not None else "-"
-        tag = "REGRESSION" if r["flagged"] else ("worse" if r["worse"] else "ok")
+        if r["flagged"]:
+            tag = "REGRESSION" if r.get("method", "mannwhitneyu") == "mannwhitneyu" else "REGRESSION(descriptive)"
+        elif r["worse"]:
+            tag = "worse"
+        else:
+            tag = "ok"
         lines.append(
             f"| {k[0]} | {k[1]} | {k[2]} | {k[3]} | {k[4]} | {_key_params(k)} | "
             f"{r['base_mean']} | {r['cur_mean']} | "
@@ -170,7 +178,8 @@ def render_report(result, threshold_pct):
     for r in result["rows"]:
         if r["flagged"]:
             k = r["key"]
-            lines.append(f"> **REGRESSION DETECTED**: {k[0]} {k[1]} {k[2]} Δ={r['delta_pct']:+.2f}%")
+            note = "" if r.get("method", "mannwhitneyu") == "mannwhitneyu" else " [descriptive only]"
+            lines.append(f"> **REGRESSION DETECTED**: {k[0]} {k[1]} {k[2]} Δ={r['delta_pct']:+.2f}%{note}")
     return "\n".join(lines) + "\n"
 
 
@@ -193,11 +202,14 @@ def main(args) -> int:
             print(f"Baseline saved: {out}")
         return 0
     # compare
-    result = compare(args.baseline, records)
+    threshold = getattr(args, "threshold", DEFAULT_THRESHOLD_PCT)
+    if threshold is None:
+        threshold = DEFAULT_THRESHOLD_PCT
+    result = compare(args.baseline, records, threshold_pct=threshold)
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
-        print(render_report(result, DEFAULT_THRESHOLD_PCT))
+        print(render_report(result, threshold))
         if result.get("note"):
             print(f"note: {result['note']}", file=sys.stderr)
     return 0

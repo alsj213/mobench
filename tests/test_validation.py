@@ -957,3 +957,40 @@ def test_parse_greedy_prompt_echo_mismatch_refuses(tmp_path):
     with pytest.raises(AdapterError, match="prompt echo"):
         adapter.parse_validate({"instrument": "greedy", "prompt": str(prompt)},
                                str(log))
+
+
+def test_validate_ab_threads_override_applies_to_both_sides(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    cfg_path, cfg_b_path = setup_validate_project(tmp_path, ab=True)
+    art = run_validation(
+        load_config(cfg_path),
+        config_b=load_config(cfg_b_path),
+        threads=8,
+        config_path=cfg_path,
+        config_b_path=cfg_b_path,
+    )
+    assert art["threads"] == 8
+    assert art["controls"]["threads"] == 8
+    assert set(art["sides"]) == {"a", "b"}
+
+
+def test_validate_ab_side_b_failure_marks_coverage_uncovered(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    cfg_path, cfg_b_path = setup_validate_project(tmp_path, ab=True)
+    # 构造 side b 使用独立 bin 目录，其 llama-completion 退出非零
+    bin_b = tmp_path / "bin_b"
+    fake_validate_bins(bin_b)
+    (bin_b / "llama-completion").write_text("#!/usr/bin/env python3\nimport sys\nsys.exit(2)\n", encoding="utf-8")
+    (bin_b / "llama-completion").chmod(0o755)
+    body_b = open(cfg_b_path, encoding="utf-8").read().replace("bin_dir: bin", f"bin_dir: {bin_b}")
+    open(cfg_b_path, "w", encoding="utf-8").write(body_b)
+
+    art = run_validation(
+        load_config(cfg_path),
+        config_b=load_config(cfg_b_path),
+        config_path=cfg_path,
+        config_b_path=cfg_b_path,
+    )
+    assert art["coverage"]["decode"]["covered"] is False
+    assert "side b" in art["coverage"]["decode"]["reason"]
+    assert art["coverage"]["prefill"]["covered"] is True

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Iterator
+import sys
+from typing import Iterator
 
 RECORD_SCHEMA = "mobench/record@1"
 
@@ -34,7 +35,23 @@ class RecordError(ValueError):
     """Raised when a record is malformed or untraceable."""
 
 
-def validate_record(rec: dict) -> list:
+def resolve_source_log(source_log: str, base_dir: str | None = None) -> str | None:
+    """按 CWD、records 所在目录、records 同目录 basename 顺序解析原始日志路径。"""
+    if not source_log:
+        return None
+    if os.path.exists(source_log):
+        return source_log
+    if base_dir:
+        rel_cand = os.path.join(base_dir, source_log)
+        if os.path.exists(rel_cand):
+            return rel_cand
+        sib_cand = os.path.join(base_dir, os.path.basename(source_log))
+        if os.path.exists(sib_cand):
+            return sib_cand
+    return None
+
+
+def validate_record(rec: dict, base_dir: str | None = None) -> list:
     """Return a list of human-readable problems with ``rec``.
 
     An empty list means the record is acceptable.
@@ -51,7 +68,7 @@ def validate_record(rec: dict) -> list:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         errors.append("'value' must be numeric")
     source_log = rec.get("source_log")
-    if source_log and not os.path.exists(source_log):
+    if source_log and resolve_source_log(source_log, base_dir=base_dir) is None:
         errors.append(f"source_log does not exist: {source_log}")
     return errors
 
@@ -82,17 +99,26 @@ def append_record(path: str, rec: dict) -> None:
 
 def iter_records(path: str) -> Iterator[dict]:
     """Yield parsed records from a records JSONL file."""
+    base_dir = os.path.dirname(os.path.abspath(path))
     with open(path, encoding="utf-8") as fh:
-        for line in fh:
+        for lineno, line in enumerate(fh, 1):
             line = line.strip()
             if not line:
                 continue
             rec = json.loads(line)
-            if validate_record(rec):
-                # Rows failing validation are refused at write time; skip a
-                # hand-edited bad row rather than surfacing partial data.
+            errs = validate_record(rec, base_dir=base_dir)
+            if errs:
+                # 明确向 stderr 告警跳过的非法行，绝不静默丢数据
+                print(
+                    f"Warning: skipping invalid record in {path}:{lineno}: {'; '.join(errs)}",
+                    file=sys.stderr,
+                )
                 continue
-            yield normalize_record(rec)
+            out = normalize_record(rec)
+            resolved = resolve_source_log(out.get("source_log", ""), base_dir=base_dir)
+            if resolved:
+                out["source_log"] = resolved
+            yield out
 
 
 def _control_key(rec: dict):
@@ -131,6 +157,12 @@ def group_key(rec: dict) -> tuple:
         rec.get("threads"),
         rec.get("precision"),
     ]
+    backend = rec.get("backend")
+    if backend not in (None, ""):
+        key.append(("backend", str(backend)))
+    platform = rec.get("platform")
+    if platform not in (None, "", "host"):
+        key.append(("platform", str(platform)))
     params = rec.get("params")
     if isinstance(params, dict) and params:
         key.append(tuple(sorted((str(k), str(v)) for k, v in params.items())))
@@ -173,6 +205,6 @@ def read_paths(inputs) -> list:
             try:
                 samples.extend(iter_records(f))
             except Exception as exc:  # tolerate a single bad file
-                print(f"Warning: cannot parse {f}: {exc}", file=__import__("sys").stderr)
+                print(f"Warning: cannot parse {f}: {exc}", file=sys.stderr)
                 continue
     return samples

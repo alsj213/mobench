@@ -169,3 +169,17 @@ def test_summarize_aggregates_rounds(tmp_path):
     assert len(rows) == 1
     assert rows[0]["n"] == 2
     assert rows[0]["mean"] == pytest.approx(11.0)
+
+
+def test_summarize_rows_zero_mean_and_sample_stdev(tmp_path):
+    import statistics
+
+    zero_recs = [rec(tmp_path, value=0.0), rec(tmp_path, value=0.0)]
+    zrows = summarize_rows(zero_recs)
+    assert zrows[0]["cv_pct"] == 0.0
+
+    vals = [10.0, 12.0, 14.0]
+    recs = [rec(tmp_path, value=v) for v in vals]
+    srows = summarize_rows(recs)
+    expected_cv = round(statistics.stdev(vals) / statistics.fmean(vals) * 100, 2)
+    assert srows[0]["cv_pct"] == pytest.approx(expected_cv)

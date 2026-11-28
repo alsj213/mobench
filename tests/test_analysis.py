@@ -181,15 +181,23 @@ def test_power_computes_energy_per_inference():
     # Arrange
     text = "Capacity: 5000\nComputed drain: 100 mAh"
 
-    # Act
-    result = power_mod.report(text, source="batterystats", inference_count=100,
-                              throughput=54.0)
+    # Act: 无 duration_s 时不伪造 perf_per_watt
+    result_no_dur = power_mod.report(
+        text, source="batterystats", inference_count=100, throughput=54.0
+    )
+    assert result_no_dur["status"] == "ok"
+    assert result_no_dur["energy_joules"] == pytest.approx(1296.0)  # 100 mAh * 12.96
+    assert result_no_dur["energy_per_inference_j"] == pytest.approx(12.96)
+    assert result_no_dur["ops_per_joule"] == pytest.approx(round(100.0 / 1296.0, 6))
+    assert result_no_dur["avg_watts"] is None
+    assert result_no_dur["perf_per_watt"] is None
 
-    # Assert
-    assert result["status"] == "ok"
-    assert result["energy_joules"] == pytest.approx(360.0)  # 100 mAh * 3.6
-    assert result["energy_per_inference_j"] == pytest.approx(3.6)
-    assert result["perf_per_watt"] == pytest.approx(54.0 / 360.0)
+    # Act: 提供 duration_s 时按平均功率计算 perf_per_watt
+    result = power_mod.report(
+        text, source="batterystats", inference_count=100, throughput=54.0, duration_s=10.0
+    )
+    assert result["avg_watts"] == pytest.approx(129.6)
+    assert result["perf_per_watt"] == pytest.approx(round(54.0 / 129.6, 6))
 
 
 def test_power_rapl():
@@ -212,7 +220,65 @@ def test_power_wrapped_numbers(tmp_path):
 
     # Assert
     assert rep["status"] == "ok"
-    assert rep["energy_joules"] == pytest.approx(42 * 3.6)
+    assert rep["energy_joules"] == pytest.approx(42 * 12.96)
+
+
+def test_stats_uses_sample_stdev():
+    import statistics
+
+    vals = [10.0, 10.5, 11.0, 11.5, 12.0]
+    summ = stats_mod.summarize(vals)
+    expected_std = round(statistics.stdev(vals), 4)
+    assert summ["std"] == pytest.approx(expected_std)
+
+
+def test_regression_threshold_cli_and_descriptive_label(tmp_path, capsys):
+    from mobench.cli import main as cli_main
+
+    # <5 samples -> descriptive only; --threshold 2.0 flags 3% delta
+    write_records(tmp_path, values=(100.0, 100.0, 100.0), fname="b_small.jsonl")
+    write_records(tmp_path, values=(97.0, 97.0, 97.0), fname="c_small.jsonl")
+    base = str(tmp_path / "b_small.jsonl")
+    cur = str(tmp_path / "c_small.jsonl")
+    baseline = tmp_path / "b_small.json"
+    assert cli_main(["regression", "save", "--results", base, "--out", str(baseline)]) == 0
+    capsys.readouterr()
+
+    assert cli_main([
+        "regression", "compare", "--results", cur, "--baseline", str(baseline),
+        "--threshold", "2.0", "--json",
+    ]) == 0
+    res = json.loads(capsys.readouterr().out)
+    assert res["rows"][0]["method"] == "descriptive"
+    assert res["rows"][0]["flagged"] is True
+
+    assert cli_main([
+        "regression", "compare", "--results", cur, "--baseline", str(baseline),
+        "--threshold", "2.0",
+    ]) == 0
+    txt = capsys.readouterr().out
+    assert "REGRESSION(descriptive)" in txt
+
+
+def test_stats_and_regression_separate_backends_and_platforms(tmp_path):
+    src = tmp_path / "raw.log"
+    src.write_text("raw", encoding="utf-8")
+    p = tmp_path / "mixed.jsonl"
+    for idx, (be, plat, val) in enumerate(
+        [("cpu", "host", 20.0), ("opencl", "host", 40.0), ("cpu", "adb", 15.0)], start=1
+    ):
+        append_record(str(p), {
+            "schema": RECORD_SCHEMA, "engine": "mnn", "workload_id": "q",
+            "metric": "gen_tok_s", "value": val, "unit": "tok/s",
+            "threads": 4, "precision": "q4", "round": idx,
+            "backend": be, "platform": plat, "source_log": str(src),
+        })
+    recs = list(iter_records(str(p)))
+    rows = stats_mod.build_rows(recs)
+    assert len(rows) == 3
+    assert {(r["backend"], r["platform"]) for r in rows} == {
+        ("cpu", "host"), ("opencl", "host"), ("cpu", "adb")
+    }
 
 
 # ---- precision ---------------------------------------------------------
