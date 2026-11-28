@@ -32,8 +32,9 @@ map exists so later runs can cover the rest.
 
 ## Environment
 
-Export these once per shell. Only `BIN_DIR`, `SOURCE_DIR`, and `MODEL` are
-required; the rest have defaults.
+Export these once per shell. Only `MOBENCH_VERIFY_BIN_DIR`,
+`MOBENCH_VERIFY_SOURCE_DIR`, and `MOBENCH_VERIFY_MODEL` are required; the rest
+have defaults.
 
 | Variable | Meaning |
 |---|---|
@@ -62,6 +63,7 @@ python3 -m mobench --version || python3 -m pip install -e .
 
 export MOBENCH_VERIFY_ADB="$PWD/tools/adb-unc-wrapper.sh"   # WSL + Windows adb
 export ADB_EXE="/path/to/adb.exe"                           # wrapper input only
+# On a native Linux host instead: export MOBENCH_VERIFY_ADB="$(command -v adb)"
 export MOBENCH_VERIFY_DEVICE="$("$MOBENCH_VERIFY_ADB" devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
 export MOBENCH_VERIFY_BIN_DIR="/path/to/llama.cpp/build-android/bin"
 export MOBENCH_VERIFY_SOURCE_DIR="/path/to/llama.cpp"
@@ -70,9 +72,9 @@ export MOBENCH_VERIFY_MODEL="/path/to/model.gguf"
 python3 .agents/skills/verify-mobench/scripts/verify_mobench.py write-config
 ```
 
-`write-config` refuses to overwrite an existing file unless `--force` is
-passed. Use `MOBENCH_VERIFY_CONFIG` to point at a config you already maintain;
-in that case skip `write-config`.
+`write-config` leaves an existing file untouched and prints `config already
+exists` (exit 0); pass `--force` to replace it. Use `MOBENCH_VERIFY_CONFIG` to
+point at a config you already maintain; in that case skip `write-config`.
 
 Launch is complete when the config exists and `doctor` passes. There is no
 server to keep alive: every command is a short-lived CLI process.
@@ -112,7 +114,9 @@ python3 .agents/skills/verify-mobench/scripts/verify_mobench.py prove \
 
 `prove` runs `doctor`, then the real `mobench run`, then `stats`, `runs`, and
 `report`, and writes a self-checking `proof.json`. A proof is accepted only
-when every check in that file is `true`.
+when every check in that file is `true`. `--evidence-dir <dir>` overrides the
+default evidence location; set `EVIDENCE` to the path `prove` prints for the
+cleanup step below.
 
 The equivalent manual core command is:
 
@@ -129,7 +133,11 @@ substitute a different entry point and call the feature verified.
 
 ## Evidence
 
-`prove` writes to `results/verify-mobench/evidence/<UTC timestamp>/`:
+`prove` writes to `$MOBENCH_VERIFY_RESULTS/evidence/<UTC timestamp>/`
+(default `results/verify-mobench/evidence/<UTC timestamp>/`). The run itself
+lives in a timestamped directory under `$MOBENCH_VERIFY_RESULTS/`; `prove`
+copies its small trace files into `evidence/run/` so the proof is
+self-contained.
 
 | Artifact | What it proves |
 |---|---|
@@ -137,8 +145,8 @@ substitute a different entry point and call the feature verified.
 | `config.yml` | The exact effective input (local paths; never commit). |
 | `run.stdout.json` | The CLI's machine-readable result: records path, `n_records`, `valid`, engine version, device, build recipe, measurement conditions. |
 | `run.stderr.log` / `run.rc` | The action and its exit code. |
-| `run_*/run.json` | Per-run trace: binary/model hashes, recipe, env control, thermal band. |
-| `run_*/records.jsonl` + `raw_*.log` | Every metric and the non-empty raw engine log named by its `source_log`. |
+| `run/run.json` | Per-run trace: binary/model hashes, recipe, env control, thermal band. |
+| `run/records.jsonl` + `run/raw_*.log` | Every metric and the non-empty raw engine log named by its `source_log`. |
 | `stats.json` | Grouped n / mean / std / CV / P50 / P90 / P99. |
 | `runs.json` | The run index row, including audit/valid flags. |
 | `report/benchmark_report.md` / `.html` | Source-linked report, including a thermal banner when relevant. |
@@ -153,8 +161,8 @@ Proof standards:
 - Capture the action and the result: command line, stdout, stderr, exit code,
   `run.json`, records, and raw logs.
 - Verify side effects, not just the screen: `n_records > 0`, every record's
-  `source_log` exists and is non-empty, `valid: true`, `aborted: false`, and
-  the report cites a `raw_` log.
+  `source_log` exists and is non-empty, `valid: true`, `aborted` false or
+  absent, and the report cites a `raw_` log.
 - A `throttle_risk: true` run is not a performance proof. Cool the device and
   rerun.
 - Evidence survives cleanup. Cleanup never deletes `results/`.
@@ -162,30 +170,34 @@ Proof standards:
 ## Cleanup
 
 ```bash
+# Set EVIDENCE to the path `prove` printed.
 python3 .agents/skills/verify-mobench/scripts/verify_mobench.py cleanup \
-  --config "$MOBENCH_VERIFY_CONFIG"
+  --config "$MOBENCH_VERIFY_CONFIG" --evidence "$EVIDENCE"
 ```
 
 The CLI is short-lived, so there is no instance to stop. `cleanup` checks:
 
 - no `llama-bench` / `llm_bench` / `benchmark.out` process is left on the
   device (it reports PIDs; it never kills by name);
-- every governor touched by the newest `run.json` is back at its recorded
-  `restored_from` value. If not, restore only those policies with root and
-  rerun cleanup;
-- the evidence directory still exists.
+- every governor touched by the selected `run.json` is back at its recorded
+  `restored_from` value (newest by default, or the run named by `--evidence`).
+  If not, restore only those policies with root and rerun cleanup;
+- with `--evidence`, the named `proof.json` still exists and all of its checks
+  are `true`. Without it, cleanup prints the evidence root and leaves it alone.
 
-`--remove-config` deletes a disposable config after its copy is in the evidence
-directory. It never deletes evidence.
+`--remove-config` deletes the disposable config; `prove` has already copied it
+to `evidence/config.yml`. Use it only after a proof. It never deletes evidence.
 
 ## Helpers
 
-- `scripts/verify_mobench.py write-config` — render the disposable Android
-  config from the environment.
-- `scripts/verify_mobench.py doctor` — read-only preflight.
-- `scripts/verify_mobench.py prove` — doctor + run + stats + runs + report +
-  proof checks.
-- `scripts/verify_mobench.py cleanup` — process/governor check, evidence kept.
+- `python3 .agents/skills/verify-mobench/scripts/verify_mobench.py write-config`
+  — render the disposable Android config from the environment.
+- `python3 .agents/skills/verify-mobench/scripts/verify_mobench.py doctor` —
+  read-only preflight.
+- `python3 .agents/skills/verify-mobench/scripts/verify_mobench.py prove` —
+  doctor + run + stats + runs + report + proof checks.
+- `python3 .agents/skills/verify-mobench/scripts/verify_mobench.py cleanup` —
+  process/governor check, evidence kept.
 
 All helpers are invoked from the repo root with `python3`; none writes inside
 `mobench/`.

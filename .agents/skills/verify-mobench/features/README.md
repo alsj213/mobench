@@ -8,11 +8,15 @@ feature file as the recipe.
 
 - Launch from the repo root; `python3 -m mobench --version` succeeds.
 - `MOBENCH_VERIFY_CONFIG` points at an `adb` + `llamacpp` config. If it does
-  not exist, run `scripts/verify_mobench.py write-config` first.
+  not exist, run
+  `python3 .agents/skills/verify-mobench/scripts/verify_mobench.py write-config`
+  first.
 - Export `ADB_EXE` and `MOBENCH_VERIFY_ADB` when using the WSL wrapper; export
   `MOBENCH_VERIFY_DEVICE`, `MOBENCH_VERIFY_BIN_DIR`, `MOBENCH_VERIFY_SOURCE_DIR`,
   and `MOBENCH_VERIFY_MODEL`.
-- Run `scripts/verify_mobench.py doctor` and require `doctor: OK`.
+- Run
+  `python3 .agents/skills/verify-mobench/scripts/verify_mobench.py doctor`
+  and require `doctor: OK`.
 - Never drive a device that this verification run did not check as idle.
 - Treat `results/` and `configs/local/` as local-only. They are gitignored.
 
@@ -34,7 +38,7 @@ feature file as the recipe.
 
 - Capture the action and the resulting state: command, stdout, stderr, exit
   code, run artifacts, and the source log named by every record.
-- Performance proof requires `valid: true`, `aborted: false`,
+- Performance proof requires `valid: true`, `aborted` false or absent,
   `throttle_risk: false`, and a non-empty `source_log` per record.
 - Record the feature ID and entry point used with every artifact.
 - Report an unreachable path with the attempted command and the unmet

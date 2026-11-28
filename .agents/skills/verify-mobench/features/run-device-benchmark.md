@@ -34,8 +34,8 @@ engine log.
 
 Preconditions:
 
-- `scripts/verify_mobench.py doctor --config "$MOBENCH_VERIFY_CONFIG"` prints
-  `doctor: OK`.
+- `python3 .agents/skills/verify-mobench/scripts/verify_mobench.py doctor --config "$MOBENCH_VERIFY_CONFIG"`
+  prints `doctor: OK`.
 - `ADB_EXE`, `MOBENCH_VERIFY_ADB`, `MOBENCH_VERIFY_DEVICE`,
   `MOBENCH_VERIFY_BIN_DIR`, `MOBENCH_VERIFY_SOURCE_DIR`, and
   `MOBENCH_VERIFY_MODEL` are exported.
