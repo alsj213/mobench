@@ -45,11 +45,15 @@ def test_scan_runs_skips_broken_json(tmp_path):
 def test_render_flags(tmp_path):
     write_run(tmp_path, "20260101_000001", label="arm-a",
               build_recipe={"checked": True}, log_audit={"valid": False},
-              throttle_risk=True)
-    out = render_rows(scan_runs(str(tmp_path)))
+              freq_audit={"valid": False}, throttle_risk=True)
+    rows = scan_runs(str(tmp_path))
+    assert rows[0]["freq_audit_valid"] is False
+    assert rows[0]["valid"] is False
+    out = render_rows(rows)
     assert "arm-a" in out
     assert "recipe-ok" in out
     assert "AUDIT-INVALID" in out
+    assert "FREQ-INVALID" in out
     assert "throttled" in out
 
 

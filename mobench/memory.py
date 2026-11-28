@@ -17,7 +17,7 @@ import time
 
 from mobench.adapters.base import AdapterError, get_adapter
 from mobench.config import ConfigError, load_config
-from mobench.platform.base import BasePlatform, PlatformError
+from mobench.platform.base import BasePlatform, PlatformError, measurement_session
 
 DEFAULT_INTERVAL = 0.2
 DEFAULT_MAX_SEC = 300
@@ -124,49 +124,44 @@ def mem_pipeline(cfg, model_id=None, threads=None, prompt=None, gen=None,
     c = copy.deepcopy(cfg)
     c["workload"] = work
     cmd = get_adapter(c).build_cmds(m, threads, rounds=1)[0]
-    # Same measurement condition as `run`/`profile` (design D5): the engine is
-    # spawned through spawn_engine, which applies the pin transparently.
-    try:
-        condition = platform.measure_condition(threads)
-    except PlatformError as exc:
-        raise RuntimeError("[step:env control] " + str(exc))
-
     results_dir = cfg.get("results_dir", "results")
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = os.path.join(results_dir, f"mem_{ts}")
-    os.makedirs(out_dir, exist_ok=True)
-
-    proc = platform.spawn_engine(cmd)
     bench = (cfg.get("build") or {}).get("bench_bin", "llm_bench")
     samples = []          # (t_sec, rss_kb)
     raw_log = os.path.join(out_dir, "status_samples.log")
     start = time.monotonic()
     gone = 0              # consecutive polls without a pid before we stop
     try:
-        with open(raw_log, "w", encoding="utf-8") as fh:
-            while time.monotonic() - start <= max_sec:
-                pid = platform.pidof(bench)
-                if not pid:
-                    gone += 1
-                    if gone >= 25 or proc.poll() is not None:
-                        break
-                else:
-                    gone = 0
-                    text = platform.read_proc_status(pid.split()[0])
-                    if text:
-                        rss = parse_proc_status(text).get("VmRSS")
-                        if rss is not None:
-                            samples.append((time.monotonic() - start, rss))
-                        fh.write("==== t=%.2f pid=%s ====\n%s\n"
-                                 % (time.monotonic() - start, pid, text))
-                time.sleep(interval)
-        try:
-            proc.wait(timeout=30)
-        except Exception:
-            proc.kill()
-    finally:
-        # Never leave the device pinned to performance (design D4 restore).
-        platform.restore()
+        # 与 run/profile 共用 measurement_session：即使创建目录或 spawn 抛错也能保证 restore
+        with measurement_session(platform, cfg, threads, info=info) as condition:
+            os.makedirs(out_dir, exist_ok=True)
+            proc = platform.spawn_engine(cmd)
+            try:
+                with open(raw_log, "w", encoding="utf-8") as fh:
+                    while time.monotonic() - start <= max_sec:
+                        pid = platform.pidof(bench)
+                        if not pid:
+                            gone += 1
+                            if gone >= 25 or proc.poll() is not None:
+                                break
+                        else:
+                            gone = 0
+                            text = platform.read_proc_status(pid.split()[0])
+                            if text:
+                                rss = parse_proc_status(text).get("VmRSS")
+                                if rss is not None:
+                                    samples.append((time.monotonic() - start, rss))
+                                fh.write("==== t=%.2f pid=%s ====\n%s\n"
+                                         % (time.monotonic() - start, pid, text))
+                        time.sleep(interval)
+            finally:
+                try:
+                    proc.wait(timeout=30)
+                except Exception:
+                    proc.kill()
+    except PlatformError as exc:
+        raise RuntimeError("[step:env control] " + str(exc))
 
     peak = max((s[1] for s in samples), default=0)
 

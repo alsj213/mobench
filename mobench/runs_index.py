@@ -23,6 +23,15 @@ def row_from_meta(meta, path):
         md5 = md5.get("value") or md5.get("md5")
     recipe = meta.get("build_recipe") or {}
     audit = meta.get("log_audit")
+    freq_audit = meta.get("freq_audit")
+    log_ok = None if audit is None else audit.get("valid")
+    freq_ok = None if freq_audit is None else freq_audit.get("valid")
+    valid = meta.get("valid")
+    if valid is None:
+        if log_ok is False or freq_ok is False:
+            valid = False
+        elif log_ok is True or freq_ok is True:
+            valid = True
     return {
         "timestamp": meta.get("timestamp"),
         "engine": meta.get("engine"),
@@ -31,7 +40,9 @@ def row_from_meta(meta, path):
         "n_records": meta.get("n_records"),
         "models": [m.get("id") for m in (meta.get("models") or [])],
         "recipe_checked": recipe.get("checked"),
-        "log_audit_valid": None if audit is None else audit.get("valid"),
+        "log_audit_valid": log_ok,
+        "freq_audit_valid": freq_ok,
+        "valid": valid,
         "throttle_risk": meta.get("throttle_risk"),
         "run_dir": os.path.dirname(path),
     }
@@ -60,6 +71,8 @@ def _flags(row):
         flags.append("recipe-ok")
     if row["log_audit_valid"] is False:
         flags.append("AUDIT-INVALID")
+    if row.get("freq_audit_valid") is False:
+        flags.append("FREQ-INVALID")
     if row["throttle_risk"]:
         flags.append("throttled")
     return ",".join(flags) or "-"

@@ -226,17 +226,35 @@ class AdbPlatform(BasePlatform):
             "governor pinned to performance (restored on restore)")
         return True, restored_from
 
+    def _known_cpus(self) -> set:
+        """查询设备侧真实核数，避免无 cpufreq 时误退回到宿主机核数。"""
+        policies = self._ensure_policies()
+        if policies:
+            return {c for p in policies for c in p.cpus}
+        rc, out = self._shell(["nproc"], timeout=60)
+        if rc == 0:
+            try:
+                count = int((out or "").strip())
+                if count >= 1:
+                    return set(range(count))
+            except ValueError:
+                pass
+        return super()._known_cpus()
+
     # -- env control (best effort) -----------------------------------------
     def control(self, cfg: dict, env: dict) -> None:
         mode = (cfg.get("methodology") or {}).get("env_control", "auto")
         if mode == "none":
             self._env_control_label = "env control disabled (methodology.env_control=none)"
+            self._sync_env_control(env)
             return
         self._ensure_policies()
         if not self._is_root():
             self._env_control_label = "Env control degraded (non-root adb shell)"
+            self._sync_env_control(env)
             return
         self._env_control_label = "governor will be pinned to performance"
+        self._sync_env_control(env)
 
     def restore(self) -> None:
         """Return every touched governor to its recorded original value."""

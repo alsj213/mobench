@@ -135,6 +135,7 @@ class HostPlatform(BasePlatform):
         mode = (cfg.get("methodology") or {}).get("env_control", "auto")
         if mode == "none":
             self._env_control_label = "env control disabled (methodology.env_control=none)"
+            self._sync_env_control(env)
             return
         # Probe here so an unusable platform surfaces at the env-control step;
         # a missing tree is reported by measure_condition with an actionable
@@ -142,8 +143,10 @@ class HostPlatform(BasePlatform):
         self._ensure_policies()
         if os.geteuid() != 0:
             self._env_control_label = "Env control degraded (no sudo)"
+            self._sync_env_control(env)
             return
         self._env_control_label = "governor will be pinned to performance"
+        self._sync_env_control(env)
 
     def restore(self) -> None:
         """Return every touched governor to its recorded original value."""

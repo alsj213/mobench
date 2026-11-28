@@ -216,7 +216,7 @@ mobench/                  # 确定性 Python 编排核心
 configs/templates/        # 通用 YAML 配置模板（占位符）
 examples/                 # host / adb 快速上手配置示例
 schema/                   # mobench.schema.json
-scripts/                  # 辅助脚本（mobench / mobench-t4.py / md2report.py）
+scripts/                  # 辅助脚本（mobench / verify.py / md2report.py）
 tools/                    # WSL→Windows adb 路径映射包装脚本
 skills/                   # 10 个领域知识 skill（Claude Code 插件）
 agents/                   # mobile-bench-agent.md（7 步协议 + R1–R11）

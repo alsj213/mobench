@@ -56,6 +56,7 @@ def test_trace_pipeline_rejects_non_adb_platform():
 
 def test_trace_pipeline_writes_artifacts_and_cli_uses_space_cats(tmp_path, monkeypatch):
     seen_cats = []
+    calls = []
 
     class FakeProc:
         def wait(self, timeout=None):
@@ -67,6 +68,13 @@ def test_trace_pipeline_writes_artifacts_and_cli_uses_space_cats(tmp_path, monke
     class FakePlatform:
         def preflight(self):
             return {"platform": {"value": "adb"}}
+
+        def measure_condition(self, threads):
+            calls.append(("measure", threads))
+            return {"pin": {"cpus": [4], "mask": "10", "origin": "auto"}, "freq": {"locked": True}}
+
+        def restore(self):
+            calls.append(("restore",))
 
         def spawn_trace(self, dur, cats="freq"):
             seen_cats.append(cats)
@@ -101,6 +109,8 @@ def test_trace_pipeline_writes_artifacts_and_cli_uses_space_cats(tmp_path, monke
     meta = trace.trace_pipeline(cfg, dur=1.0, cats="freq sched",
                                 _platform=FakePlatform(), _adapter=FakeAdapter())
     assert seen_cats == ["freq sched"]
+    assert calls == [("measure", 4), ("restore",)]
+    assert meta["condition"]["pin"]["cpus"] == [4]
     assert meta["n_freq_events"] == 3
     assert (tmp_path / "results").exists()
     out_dir = meta["source_log"].rsplit("/", 1)[0]

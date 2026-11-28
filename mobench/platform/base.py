@@ -7,6 +7,7 @@ is best-effort: without root/sudo it degrades to recording state and labeling
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import os
 import subprocess
 
@@ -26,6 +27,22 @@ def _local_run(cmd, timeout=60):
     return {"returncode": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
 
 
+@contextmanager
+def measurement_session(platform, cfg: dict, threads: int, info: dict | None = None):
+    """统一测量会话：control -> measure_condition -> 执行 -> 保证 restore()。"""
+    target = info if isinstance(info, dict) else {}
+    if hasattr(platform, "control"):
+        platform.control(cfg, target)
+    condition = None
+    try:
+        if hasattr(platform, "measure_condition"):
+            condition = platform.measure_condition(threads)
+        yield condition
+    finally:
+        if hasattr(platform, "restore"):
+            platform.restore()
+
+
 class BasePlatform:
     name = "base"
 
@@ -36,6 +53,24 @@ class BasePlatform:
         self._pin_prefix = []
         self._freq_state = {}        # policy name -> governor to restore
         self._env_control_label = "env control not run"
+        self._active_env = None
+
+    def _sync_env_control(self, env: dict | None = None) -> None:
+        """把最新的 _env_control_label 同步写回 preflight info / run meta。"""
+        if isinstance(env, dict):
+            self._active_env = env
+        target = self._active_env
+        if not isinstance(target, dict):
+            return
+        entry = {"value": self._env_control_label, "source": "platform.control"}
+        plat = target.get("platform")
+        if isinstance(plat, dict) and "env_control" in plat:
+            plat["env_control"] = entry
+        else:
+            target["env_control"] = entry
+
+    def measurement_session(self, threads: int, info: dict | None = None):
+        return measurement_session(self, self.cfg, threads, info=info)
 
     # -- CPU pinning & frequency locking (add-cpu-pin-lockfreq) -------------
     def discover_policies(self) -> list:
@@ -74,11 +109,15 @@ class BasePlatform:
         methodology = self.cfg.get("methodology") or {}
         if methodology.get("env_control") == "none":
             self._pin_cpus, self._pin_prefix = [], []
+            self._env_control_label = "env control disabled (methodology.env_control=none)"
+            self._sync_env_control()
             return {"pin": {"cpus": [], "mask": None, "origin": "disabled"},
                     "freq": {"locked": False, "governor": None,
                              "policies": [], "restored_from": {}}}
         pin = self._apply_pin(methodology, threads)
-        return {"pin": pin, "freq": self._apply_lock_freq(methodology, pin["cpus"])}
+        cond = {"pin": pin, "freq": self._apply_lock_freq(methodology, pin["cpus"])}
+        self._sync_env_control()
+        return cond
 
     def _known_cpus(self) -> set:
         """CPU indexes this platform can address.
@@ -156,7 +195,7 @@ class BasePlatform:
         """``cmd`` prefixed with the pin, ready to execute."""
         return self.pin_prefix() + list(cmd)
 
-    def preflight(self, cfg: dict) -> dict:
+    def preflight(self) -> dict:
         """Verify the platform is usable and return identity/temperature info.
 
         Raises PlatformError when the platform is not usable (never assume).
@@ -169,7 +208,7 @@ class BasePlatform:
     def restore(self) -> None:
         """Restore environment after measurement (no-op on graceful degrade)."""
 
-    def run(self, cmd, log_path: str, cwd=None) -> int:
+    def run(self, cmd, log_path: str, cwd=None, echo: bool = True) -> int:
         """Execute ``cmd`` on the platform, teeing raw output into ``log_path``.
 
         Returns the process exit code. Callers must surface non-zero codes.

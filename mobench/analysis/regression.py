@@ -186,7 +186,7 @@ def render_report(result, threshold_pct):
 def main(args) -> int:
     import sys
 
-    records = read_paths(args.results)
+    records = read_paths(args.results, include_invalid=getattr(args, "include_invalid", False))
     if not records:
         print("regression: error: no records found in --results", file=sys.stderr)
         return 1

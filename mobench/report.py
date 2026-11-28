@@ -105,12 +105,15 @@ def _src_label(row):
 
 
 def throttle_risk(records):
-    return any(
-        isinstance(r.get("device"), dict)
-        and isinstance(r["device"].get("temp_c"), (int, float))
-        and r["device"]["temp_c"] > TEMP_THROTTLE_C
-        for r in records
-    )
+    for r in records:
+        dev = r.get("device")
+        if not isinstance(dev, dict):
+            continue
+        for key in ("temp_c", "temp_after_c", "temp_max_c"):
+            val = dev.get(key)
+            if isinstance(val, (int, float)) and val > TEMP_THROTTLE_C:
+                return True
+    return False
 
 
 def render_markdown(rows, records):
@@ -405,7 +408,7 @@ def render_chart_html(records, by="backend"):
 
 
 def main(args) -> int:
-    records = read_paths(args.inputs)
+    records = read_paths(args.inputs, include_invalid=getattr(args, "include_invalid", False))
     if not records:
         print("report: error: no records found in inputs "
               + empty_result_hint(args.inputs), file=__import__("sys").stderr)
