@@ -389,3 +389,32 @@ def test_schema_validates_all_repo_examples_and_templates():
         jsonschema.validate(instance=data, schema=schema)
         cfg = load_config(str(path))
         assert cfg["engine"] in BUILTIN_ENGINES
+
+
+@pytest.mark.parametrize(
+    ("extra", "err_match"),
+    [
+        ("workload:\n  threads: []\n", "threads"),
+        ("workload:\n  threads: [0]\n", "threads"),
+        ("workload:\n  threads: [true]\n", "threads"),
+        ("workload:\n  rounds: 0\n", "rounds"),
+        ("methodology:\n  env_control: bogus\n", "env_control"),
+        ("methodology:\n  cooldown_c: -1\n", "cooldown_c"),
+        ("methodology:\n  cooldown_max_s: -5\n", "cooldown_max_s"),
+        ("methodology:\n  cooldown_per_round: maybe\n", "cooldown_per_round"),
+        ("methodology:\n  max_attempts: 0\n", "max_attempts"),
+        ("methodology:\n  freq_floor_mhz: 0\n", "freq_floor_mhz"),
+        ("methodology:\n  timeout_s: -10\n", "timeout_s"),
+    ],
+)
+def test_runtime_config_validation_rejects_invalid_workload_and_methodology(
+    tmp_path, extra, err_match
+):
+    base = (
+        "engine: llamacpp\n"
+        "platform:\n  type: host\n"
+        "models:\n  - id: tiny\n    path: m.gguf\n"
+    )
+    cfg_path = write_cfg(tmp_path, base + extra)
+    with pytest.raises(ConfigError, match=err_match):
+        load_config(cfg_path)

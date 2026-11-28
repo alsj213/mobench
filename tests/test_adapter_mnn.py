@@ -234,3 +234,32 @@ def test_llm_backend_from_config(tmp_path):
                    encoding="utf-8")
     recs = adapter.parse(str(log), model, threads=4, round_no=1)
     assert recs[0]["backend"] == "opencl"
+
+
+def test_build_cmds_forwards_workload_cli_args(tmp_path):
+    cfg = llm_cfg(tmp_path)
+    cfg["workload"]["cli_args"] = ["--mmap", "1"]
+    adapter = MnnAdapter(cfg)
+    model = {"id": "q", "path": "/m/q/config.json"}
+    cmd = adapter.build_cmds(model, threads=4, rounds=1)[0]
+    assert cmd[-2:] == ["--mmap", "1"]
+
+
+def test_parse_llm_bench_preserves_multiple_pp_and_tg_rows(tmp_path):
+    cfg = {"engine": "mnn", "workload": {"prompt_tokens": 128, "gen_tokens": 64}}
+    adapter = MnnAdapter(cfg)
+    log = tmp_path / "multi.log"
+    log.write_text(
+        "| q | 1 MiB | CPU | 4 | Low | off | pp128 | 300.0 ± 0.0 |\n"
+        "| q | 1 MiB | CPU | 4 | Low | off | pp512 | 350.0 ± 0.0 |\n"
+        "| q | 1 MiB | CPU | 4 | Low | off | tg64 | 50.0 ± 0.0 |\n"
+        "| q | 1 MiB | CPU | 4 | Low | off | tg128 | 45.0 ± 0.0 |\n",
+        encoding="utf-8",
+    )
+    model = {"id": "q", "path": "/m/q/config.json"}
+    recs = adapter.parse(str(log), model, threads=4, round_no=1)
+    pp = [r for r in recs if r["metric"] == "prompt_eval_ms_tok"]
+    tg = [r for r in recs if r["metric"] == "gen_tok_s"]
+    assert [r["params"]["prompt_tokens"] for r in pp] == [128, 512]
+    assert [r["params"]["gen_tokens"] for r in tg] == [64, 128]
+    assert [r["value"] for r in tg] == [50.0, 45.0]

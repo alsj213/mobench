@@ -324,166 +324,110 @@ def _report_sample(ndk_dir, symfs_root, perf_data):
     return proc.stdout, proc.stderr
 
 
+def _write_flamegraph(folded, out_dir, cfg, model, threads, freq, extra_note="") -> tuple[str, int]:
+    """根据折叠调用栈写出 flamegraph.html，返回 (路径, 折叠样本总数)。"""
+    forest = flamegraph.build_tree(folded)
+    svg = flamegraph.render_flame_svg(forest)
+    notes = f"{cfg['engine']} {model['id']} t{threads} freq={freq}Hz · {len(folded)} distinct paths"
+    if extra_note:
+        notes += f" · {extra_note}"
+    doc = flamegraph.flame_html(svg, f"flame · {cfg['engine']} {model['id']} t{threads}", notes)
+    flame_path = os.path.join(out_dir, "flamegraph.html")
+    with open(flame_path, "w", encoding="utf-8") as fh:
+        fh.write(doc)
+    return flame_path, sum(folded.values())
+
+
+def _capture_host(platform, perf_bin, cmd, freq, events, out_dir, perf_local) -> dict:
+    """Host Linux perf record + stat + script 采样，返回统一捕获结构。"""
+    def _run_tool(args):
+        try:
+            return subprocess.run(
+                args, capture_output=True, text=True, timeout=1800, cwd=out_dir
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    pinned_cmd = platform.with_pin(cmd)
+    record = _run_tool(
+        [perf_bin, "record", "-g", "-F", str(freq), "-o", perf_local, "--"]
+        + list(pinned_cmd)
+    )
+    if record is None or record.returncode != 0:
+        detail = ((record.stderr or "") + (record.stdout or "")) if record else "spawn error"
+        raise RuntimeError(
+            "[step:execution] perf record failed rc=%s; %s"
+            % (record.returncode if record else "n/a", detail.strip()[:300])
+        )
+    stat_text = ""
+    stat = _run_tool([perf_bin, "stat", "-e", ",".join(events), "--"] + list(pinned_cmd))
+    if stat is not None:
+        stat_text = (stat.stdout or "") + (stat.stderr or "")
+    script = _run_tool([perf_bin, "script", "-i", perf_local])
+    samples_text = (script.stdout or "") if script else ""
+    return {
+        "stat_text": stat_text,
+        "samples_text": samples_text,
+        "top_text": "",
+        "pulled": None,
+        "samples_lost_hint": None,
+    }
+
+
+def _capture_adb(platform, cmd, freq, events, perf_local) -> dict:
+    """Android simpleperf record + flat top + 拉取 perf.data，返回统一捕获结构。"""
+    cap = platform.run_profiled(cmd, freq=freq, events=events, mmap_pages=16384)
+    if cap["record_rc"] != 0:
+        raise RuntimeError(
+            f"[step:execution] simpleperf record failed rc={cap['record_rc']}; "
+            f"sample a workload the engine accepts (raw log saved if any)."
+        )
+    try:
+        proc = platform._exec(
+            [
+                "shell",
+                f"simpleperf report -i {cap['perf_data']} --sort symbol --percent-limit 0.3",
+            ],
+            timeout=300,
+        )
+        top_text = proc.stdout or ""
+    except Exception:
+        top_text = ""
+    pulled = _pull(platform, cap["perf_data"], perf_local)
+    return {
+        "stat_text": cap.get("stat_text") or "",
+        "samples_text": "",
+        "top_text": top_text,
+        "pulled": pulled,
+        "samples_lost_hint": cap.get("samples_lost_hint"),
+    }
+
+
 def profile_pipeline(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
                      events=None, ndk_dir=None, json_mode=False,
                      _platform=None, _adapter=None):
-    """Run one sampling profile pass, dispatching on the platform type.
-
-    host -> Linux perf record/stat + perf script fold (see _profile_host)
-    adb  -> device simpleperf record + report_sample (see _profile_pipeline_adb)
-    """
-    platform = _platform or BasePlatform.make(cfg)
-    if platform.name == "host":
-        return _profile_host(cfg, model_id=model_id, threads=threads,
-                             freq=freq, events=events, json_mode=json_mode,
-                             _platform=platform)
-    return _profile_pipeline_adb(cfg, model_id=model_id, threads=threads,
-                                 freq=freq, events=events, ndk_dir=ndk_dir,
-                                 json_mode=json_mode, _platform=platform,
-                                 _adapter=_adapter)
-
-
-def _profile_host(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
-                  events=None, json_mode=False, _platform=None,
-                  _adapter=None):
-    """Host Linux profile pass: ``perf record -g`` + ``perf stat``.
-
-    Runs the engine command locally under perf sampling (frame-pointer call
-    stacks), folds the ``perf script`` dump, and writes the same artifacts as
-    the adb pass (flamegraph.html / top.txt / stat.txt / samples.txt /
-    perf.data / profile.json) under ``results_dir/profile_<ts>/``.
-    """
-    events = events or list(DEFAULT_EVENTS)
-    platform = _platform or BasePlatform.make(cfg)
-    try:
-        info = platform.preflight()
-    except PlatformError as exc:
-        raise RuntimeError("[step:platform preflight] " + str(exc))
-    perf_bin = find_perf()
-    if not perf_bin:
-        raise RuntimeError(
-            "[step:tool] linux perf not found; install linux-tools "
-            "(e.g. sudo apt-get install linux-tools-generic)")
-
-    adapter = _adapter or get_adapter(cfg)
-    try:
-        engine_version = adapter.version()
-        binary = adapter.resolve_binary()
-    except AdapterError as exc:
-        raise RuntimeError("[step:binary probe] " + str(exc))
-
-    models = cfg["models"]
-    if model_id:
-        models = [m for m in models if m["id"] == model_id]
-    if not models:
-        raise RuntimeError("[step:model check] no model matches filter")
-    m = models[0]
-    threads = threads or (cfg.get("workload") or {}).get("threads", [4])[0]
-    cmd = adapter.build_cmds(m, threads, rounds=1)[0]
-
-    # Absolute paths: subprocesses run with cwd=out_dir, so a relative
-    # out_dir/perf.data would double-nest and perf cannot open it.
-    results_dir = os.path.abspath(cfg.get("results_dir", "results"))
-    ts, out_dir = make_run_dir(results_dir, "profile")
-    perf_local = os.path.join(out_dir, "perf.data")
-
-    def _run_tool(args):
-        try:
-            return subprocess.run(args, capture_output=True, text=True,
-                                  timeout=1800, cwd=out_dir)
-        except (OSError, subprocess.SubprocessError) as exc:
-            return None
-
-    try:
-        with measurement_session(platform, cfg, threads, info=info) as condition:
-            cmd = platform.with_pin(cmd)
-
-            record = _run_tool([perf_bin, "record", "-g", "-F", str(freq), "-o",
-                                perf_local, "--"] + list(cmd))
-            if record is None or record.returncode != 0:
-                detail = ((record.stderr or "") + (record.stdout or "")) if record \
-                    else "spawn error"
-                raise RuntimeError(
-                    "[step:execution] perf record failed rc=%s; %s"
-                    % (record.returncode if record else "n/a", detail.strip()[:300]))
-            stat_text = ""
-            stat = _run_tool([perf_bin, "stat", "-e", ",".join(events), "--"] + list(cmd))
-            if stat is not None:
-                stat_text = (stat.stdout or "") + (stat.stderr or "")
-            script = _run_tool([perf_bin, "script", "-i", perf_local])
-            samples_text = (script.stdout or "") if script else ""
-    except PlatformError as exc:
-        raise RuntimeError("[step:env control] " + str(exc))
-
-    binary_info = (
-        {"path": binary, "md5": artifact_set_md5(binary), "md5_scope": "artifact_set(binary+*.so*)"}
-        if os.path.isfile(binary)
-        else {"path": binary, "md5": platform.file_md5(binary)}
-    )
-    meta = {
-        "schema": "mobench/profile@1",
-        "timestamp": ts,
-        "engine": cfg["engine"],
-        "engine_version": engine_version,
-        "binary": binary_info,
-        "model": m["id"], "threads": threads,
-        "freq": freq, "events": events,
-        "platform": info,
-        "condition": condition,
-        "perf": perf_bin,
-        "perf_data": perf_local,
-        "out_dir": out_dir,
-    }
-    with open(os.path.join(out_dir, "stat.txt"), "w", encoding="utf-8") as fh:
-        fh.write(stat_text or "(stat not collected)")
-    with open(os.path.join(out_dir, "samples.txt"), "w", encoding="utf-8") as fh:
-        fh.write(samples_text)
-
-    if stat_text:
-        counts = parse_perf_stat(stat_text)
-        metric = metrics_from_stat(counts)
-        metric["counts"] = counts
-        meta["events_summary"] = metric
-
-    folded = fold_perf_samples(samples_text)
-    if folded:
-        top = top_from_frames(parse_perf_samples(samples_text), limit=10)
-        meta["top"] = [{"pct": p, "name": n} for p, n in top]
-        with open(os.path.join(out_dir, "top.txt"), "w", encoding="utf-8") as fh:
-            for p, n in top:
-                fh.write(f"{p:6.2f}%  {n}\n")
-        forest = flamegraph.build_tree(folded)
-        svg = flamegraph.render_flame_svg(forest)
-        notes = (f"{cfg['engine']} {m['id']} t{threads} freq={freq}Hz · "
-                 f"{len(folded)} distinct paths")
-        doc = flamegraph.flame_html(
-            svg, f"flame · {cfg['engine']} {m['id']} t{threads}", notes)
-        flame_path = os.path.join(out_dir, "flamegraph.html")
-        with open(flame_path, "w", encoding="utf-8") as fh:
-            fh.write(doc)
-        meta["n_samples_folded"] = sum(folded.values())
-        meta["flamegraph"] = flame_path
-    else:
-        meta["flame_skipped"] = "no call stacks folded from perf script"
-
-    atomic_write_json(os.path.join(out_dir, "profile.json"), meta)
-    return meta
-
-
-def _profile_pipeline_adb(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
-                          events=None, ndk_dir=None, json_mode=False,
-                          _platform=None, _adapter=None):
-    """Sample one engine/model/threads run on a real device with simpleperf.
+    """Run one sampling profile pass across host (perf) or adb (simpleperf).
 
     Returns analysis metadata written under ``results_dir/profile_<ts>/``:
     flamegraph.html, top.txt, stat.txt, samples.txt, perf.data, profile.json.
     """
     events = events or list(DEFAULT_EVENTS)
     platform = _platform or BasePlatform.make(cfg)
+    is_host = platform.name == "host"
     try:
         info = platform.preflight()
     except PlatformError as exc:
         raise RuntimeError("[step:platform preflight] " + str(exc))
+
+    perf_bin = None
+    if is_host:
+        perf_bin = find_perf()
+        if not perf_bin:
+            raise RuntimeError(
+                "[step:tool] linux perf not found; install linux-tools "
+                "(e.g. sudo apt-get install linux-tools-generic)"
+            )
+
     adapter = _adapter or get_adapter(cfg)
     try:
         engine_version = adapter.version()
@@ -500,34 +444,23 @@ def _profile_pipeline_adb(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
     threads = threads or (cfg.get("workload") or {}).get("threads", [4])[0]
     cmd = adapter.build_cmds(m, threads, rounds=1)[0]
 
-    results_dir = cfg.get("results_dir", "results")
+    # Host perf runs with cwd=out_dir, so require an absolute output dir there.
+    raw_results = cfg.get("results_dir", "results")
+    results_dir = os.path.abspath(raw_results) if is_host else raw_results
     ts, out_dir = make_run_dir(results_dir, "profile")
-
     perf_local = os.path.join(out_dir, "perf.data")
-    top_text = ""
-    pulled = False
+
     try:
         with measurement_session(platform, cfg, threads, info=info) as condition:
-            cap = platform.run_profiled(cmd, freq=freq, events=events,
-                                        mmap_pages=16384)
-            if cap["record_rc"] != 0:
-                raise RuntimeError(
-                    f"[step:execution] simpleperf record failed rc={cap['record_rc']}; "
-                    f"sample a workload the engine accepts (raw log saved if any).")
-
-            # device-side flat top
-            try:
-                proc = platform._exec(["shell",
-                                       f"simpleperf report -i {cap['perf_data']} "
-                                       "--sort symbol --percent-limit 0.3"], timeout=300)
-                top_text = proc.stdout or ""
-            except Exception:
-                top_text = ""
-
-            # pull perf.data for the local flamegraph pass
-            pulled = _pull(platform, cap["perf_data"], perf_local)
+            if is_host:
+                cap = _capture_host(
+                    platform, perf_bin, cmd, freq, events, out_dir, perf_local
+                )
+            else:
+                cap = _capture_adb(platform, cmd, freq, events, perf_local)
     except PlatformError as exc:
         raise RuntimeError("[step:env control] " + str(exc))
+
     binary_info = (
         {"path": binary, "md5": artifact_set_md5(binary), "md5_scope": "artifact_set(binary+*.so*)"}
         if os.path.isfile(binary)
@@ -539,62 +472,81 @@ def _profile_pipeline_adb(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
         "engine": cfg["engine"],
         "engine_version": engine_version,
         "binary": binary_info,
-        "model": m["id"], "threads": threads,
-        "freq": freq, "events": events,
-        "platform": info, "condition": condition,
-        "samples_lost_hint": cap.get("samples_lost_hint"),
-        "perf_data_pulled": pulled,
+        "model": m["id"],
+        "threads": threads,
+        "freq": freq,
+        "events": events,
+        "platform": info,
+        "condition": condition,
         "out_dir": out_dir,
     }
-
-    with open(os.path.join(out_dir, "stat.txt"), "w",
-              encoding="utf-8") as fh:
-        fh.write(cap["stat_text"] or "(stat not collected)")
-    with open(os.path.join(out_dir, "top.txt"), "w",
-              encoding="utf-8") as fh:
-        fh.write(top_text)
-    if cap["stat_text"]:
-        events_count = parse_stat(cap["stat_text"])
-        metric = metrics_from_stat(events_count)
-        metric["counts"] = {k: v for k, v in events_count.items()}
-        meta["events_summary"] = metric
-    if top_text:
-        meta["top"] = [{"pct": p, "name": n}
-                       for p, n in top_symbols(top_text, limit=10)]
-
-    # flamegraph from local fold (needs NDK report_sample.py + symbols)
-    ndk = find_simpleperf_dir(ndk_dir)
-    flame_path = ""
-    if pulled and ndk:
-        symfs = os.path.join(out_dir, "symfs")
-        mirror_bin_dir((cfg.get("build") or {}).get("bin_dir") or "", symfs)
-        samples, err = _report_sample(ndk, symfs, perf_local)
-        with open(os.path.join(out_dir, "samples.txt"), "w",
-                  encoding="utf-8") as fh:
-            fh.write(samples)
-        folded = fold_samples(samples)
-        if folded:
-            forest = flamegraph.build_tree(folded)
-            svg = flamegraph.render_flame_svg(forest)
-            notes = (f"{cfg['engine']} {m['id']} t{threads} freq={freq}Hz · "
-                     f"{len(folded)} distinct paths · samples_hint="
-                     f"{cap.get('samples_lost_hint') or 'ok'}")
-            doc = flamegraph.flame_html(
-                svg, f"flame · {cfg['engine']} {m['id']} t{threads}", notes)
-            flame_path = os.path.join(out_dir, "flamegraph.html")
-            with open(flame_path, "w", encoding="utf-8") as fh:
-                fh.write(doc)
-            meta["n_samples_folded"] = sum(folded.values())
-            meta["flamegraph"] = flame_path
-        meta["report_sample_stderr"] = err[:400] if err else ""
+    if is_host:
+        meta["perf"] = perf_bin
+        meta["perf_data"] = perf_local
     else:
-        meta["flamegraph"] = ""
-        meta["flame_skipped"] = (
-            "ndk simpleperf not found; give --ndk-dir" if not ndk
-            else "perf.data not pulled")
+        meta["samples_lost_hint"] = cap.get("samples_lost_hint")
+        meta["perf_data_pulled"] = cap.get("pulled")
 
-    meta_path = os.path.join(out_dir, "profile.json")
-    atomic_write_json(meta_path, meta)
+    stat_text = cap["stat_text"]
+    with open(os.path.join(out_dir, "stat.txt"), "w", encoding="utf-8") as fh:
+        fh.write(stat_text or "(stat not collected)")
+    if stat_text:
+        counts = parse_perf_stat(stat_text) if is_host else parse_stat(stat_text)
+        metric = metrics_from_stat(counts)
+        metric["counts"] = dict(counts)
+        meta["events_summary"] = metric
+
+    if is_host:
+        samples_text = cap["samples_text"]
+        with open(os.path.join(out_dir, "samples.txt"), "w", encoding="utf-8") as fh:
+            fh.write(samples_text)
+        folded = fold_perf_samples(samples_text)
+        if folded:
+            top = top_from_frames(parse_perf_samples(samples_text), limit=10)
+            meta["top"] = [{"pct": p, "name": n} for p, n in top]
+            with open(os.path.join(out_dir, "top.txt"), "w", encoding="utf-8") as fh:
+                for p, n in top:
+                    fh.write(f"{p:6.2f}%  {n}\n")
+            flame_path, n_folded = _write_flamegraph(
+                folded, out_dir, cfg, m, threads, freq
+            )
+            meta["n_samples_folded"] = n_folded
+            meta["flamegraph"] = flame_path
+        else:
+            meta["flame_skipped"] = "no call stacks folded from perf script"
+    else:
+        top_text = cap["top_text"]
+        with open(os.path.join(out_dir, "top.txt"), "w", encoding="utf-8") as fh:
+            fh.write(top_text)
+        if top_text:
+            meta["top"] = [
+                {"pct": p, "name": n} for p, n in top_symbols(top_text, limit=10)
+            ]
+        ndk = find_simpleperf_dir(ndk_dir)
+        if cap["pulled"] and ndk:
+            symfs = os.path.join(out_dir, "symfs")
+            mirror_bin_dir((cfg.get("build") or {}).get("bin_dir") or "", symfs)
+            samples, err = _report_sample(ndk, symfs, perf_local)
+            with open(os.path.join(out_dir, "samples.txt"), "w", encoding="utf-8") as fh:
+                fh.write(samples)
+            folded = fold_samples(samples)
+            if folded:
+                extra = f"samples_hint={cap.get('samples_lost_hint') or 'ok'}"
+                flame_path, n_folded = _write_flamegraph(
+                    folded, out_dir, cfg, m, threads, freq, extra_note=extra
+                )
+                meta["n_samples_folded"] = n_folded
+                meta["flamegraph"] = flame_path
+            meta["report_sample_stderr"] = err[:400] if err else ""
+        else:
+            meta["flamegraph"] = ""
+            meta["flame_skipped"] = (
+                "ndk simpleperf not found; give --ndk-dir"
+                if not ndk
+                else "perf.data not pulled"
+            )
+
+    atomic_write_json(os.path.join(out_dir, "profile.json"), meta)
     return meta
 
 

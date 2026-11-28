@@ -148,3 +148,47 @@ def test_mem_pipeline_restores_on_spawn_error(tmp_path):
     with pytest.raises(OSError, match="adb crashed"):
         memory.mem_pipeline(cfg, _platform=BoomPlatform())
     assert calls == ["measure", "restore"]
+
+
+def test_mem_pipeline_polls_adapter_process_name(tmp_path, monkeypatch):
+    bench = tmp_path / "custom-bench-bin"
+    bench.write_text("#!/bin/sh\n", encoding="utf-8")
+    seen_pidof = []
+
+    class FakeProc:
+        def poll(self):
+            return 0
+
+        def wait(self, timeout=None):
+            return 0
+
+    class FakePlatform:
+        def preflight(self):
+            return {"platform": {"value": "adb"}}
+
+        def measure_condition(self, threads):
+            return {"pin": {"cpus": [], "mask": None, "origin": "disabled"}, "freq": {"locked": False}}
+
+        def spawn_engine(self, cmd):
+            return FakeProc()
+
+        def pidof(self, name):
+            seen_pidof.append(name)
+            return ""
+
+        def read_proc_status(self, pid):
+            return None
+
+        def restore(self):
+            pass
+
+    monkeypatch.setattr(memory.time, "sleep", lambda _s: None)
+    cfg = {
+        "engine": "mnn",
+        "build": {"bin_dir": str(tmp_path), "bench_bin": "custom-bench-bin"},
+        "models": [{"id": "q", "path": str(tmp_path / "m.mnn")}],
+        "workload": {"threads": [4], "rounds": 1},
+        "results_dir": str(tmp_path / "results"),
+    }
+    memory.mem_pipeline(cfg, _platform=FakePlatform())
+    assert seen_pidof == ["custom-bench-bin"]

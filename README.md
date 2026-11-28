@@ -149,19 +149,19 @@ results_dir: results
 | 子命令 | 作用 |
 |--------|------|
 | `prepare [model_ids]` | 模型准备三态：自备校验 / 下载 + sha256 / 借用引擎工具转换（`convert_with`） |
-| `env` | 环境快照：平台身份 + 温度 / 引擎版本 / binary 与 model MD5（每字段附来源命令） |
-| `run` | 完整基准流水线：preflight → 温度门禁 → 版本/哈希 → 模型检查 → 环境控制 → 执行（tee） → records |
+| `env` | 环境快照：平台身份 + 温度 / 引擎版本 / binary 与 model MD5（每字段附来源命令；支持 `--no-save` 跳过写文件） |
+| `run` | 完整基准流水线：preflight → 冷却门 → 版本/哈希 → 模型检查 → 环境控制 → 每轮热态/频门禁与日志探针 → records |
 | `profile` | 性能剖面采样：host `perf` / adb `simpleperf`，产出火焰图、热点 top 与 IPC 统计 |
 | `memory` | 内存采样（**当前仅支持 Android `adb`**）：在长序列运行期间轮询进程 RSS，输出内存曲线与峰值 |
 | `trace` | 频率追踪（**当前仅支持 Android `adb`**）：采集运行期间的 `atrace` CPU 频率轨迹 |
-| `stats <inputs…>` | 分组统计 mean / std / CV / P50 / P90 / P99，CV > 5% 自动告警 |
-| `report <inputs…> --format md\|html\|both\|chart` | 带来源标注的基准报告（高温 >45°C 自动打降频横幅）；`chart` 输出多面板基准图（支持 `--chart-by backend\|engine\|matrix`） |
-| `regression save\|compare` | 基线保存与跨 commit 回归对比（Mann-Whitney 显著性检验 + 阈值告警） |
+| `stats <inputs…>` | 分组统计 mean / std（样本标准差）/ CV / P50 / P90 / P99，CV > 5% 自动告警；默认跳过无效 run（支持 `--include-invalid`） |
+| `report <inputs…> --format md\|html\|both\|chart` | 带来源标注的基准报告（高温 >45°C 自动打降频横幅）；默认跳过无效 run（支持 `--include-invalid`）；`chart` 支持 `--chart-by backend\|engine\|matrix` |
+| `regression save\|compare` | 基线保存与跨 commit 回归对比（Mann-Whitney 显著性检验、`--threshold` 与 `--include-invalid`） |
 | `validate run\|compare` | 精度校验门禁：`run` 产出自描述 `validate.json`；`compare` 离线判定 `PASS/WARN=0`、`FAIL=2`、不可比=`1` |
-| `power` | 能耗分析：每推理能耗（J）与 perf/Watt（消费 RAPL / batterystats 文本，不可用明确声明） |
+| `power` | 能耗分析：每推理能耗（J）与 perf/Watt（消费 RAPL / batterystats 文本；传 `--duration` 计算平均功率） |
 | `runs` | 历史运行索引：扫描 `results/` 下所有 `run.json`，汇总时间、标签、产物 MD5、记录数与审计状态 |
 
-`run` 支持常用覆盖参数：`--config` / `--engine` / `--model` / `--threads` / `--rounds` / `--label`。
+`run` 支持常用覆盖参数：`--config` / `--engine` / `--model` / `--threads` / `--rounds` / `--label` / `--cooldown-c` / `--cooldown-per-round` / `--max-attempts`。
 
 ### 精度校验（`validate`）
 
@@ -201,18 +201,19 @@ mobench/                  # 确定性 Python 编排核心
 ├── records.py            #   canonical records: mobench/record@1 JSONL（source_log 溯源）
 ├── adapters/             #   引擎唯一耦合点（base.py + llamacpp.py / mnn.py）
 ├── platform/             #   host / adb（preflight·温度·绑核锁频·run/tee·restore）
-├── run.py                #   基准执行流水线与运行中频率有效性检查
+├── run.py                #   基准执行流水线、冷却门与每轮热态/频率有效性检查
 ├── validation.py         #   精度校验仪器执行（greedy / ppl）
 ├── profiling.py          #   perf / simpleperf 采样与热点统计
 ├── flamegraph.py         #   火焰图生成
 ├── memory.py             #   RSS 内存曲线采样
 ├── trace.py              #   atrace 频率轨迹采集
+├── io_utils.py           #   流式哈希（md5/sha256）、原子 JSON 落盘与冲突安全目录生成
 ├── snapshot.py           #   环境与产物哈希快照
 ├── prepare.py            #   模型准备（自备 / 下载 / 转换）
 ├── report.py             #   Markdown / HTML / 多面板基准图生成
 ├── runs_index.py         #   results/ 历史运行索引
 ├── mcp_server.py         #   FastMCP stdio 工具面
-└── analysis/             #   stats / regression / correctness / power / compare_precision (Python Library API)
+└── analysis/             #   stats / regression / correctness / power (Python Library API)
 configs/templates/        # 通用 YAML 配置模板（占位符）
 examples/                 # host / adb 快速上手配置示例
 schema/                   # mobench.schema.json
@@ -263,10 +264,10 @@ python3 -m mobench.mcp_server    # stdio 模式启动
 
 ```bash
 pip install -e ".[dev]"
-python3 -m pytest tests/ -q --cov=mobench
+python3 scripts/verify.py
 ```
 
-测试套件涵盖 CLI、配置校验、双平台（host / mock adb）、引擎适配器、统计/回归/精度校验、火焰图与 MCP server（GitHub Actions 在 Python 3.10–3.13 矩阵持续验证）。
+`scripts/verify.py` 串行执行字节码编译、版本号一致性、Schema/YAML 校验、仓库卫生、AST 守门（`BasePlatform` 签名一致性 / 禁用裸 `open()` / 核心模块无引擎硬编码）、无可选依赖纯核心导入冒烟、`ruff` 与 `pytest` 分支覆盖率门禁（`>= 80%`）。测试套件涵盖 CLI、配置校验、双平台（host / mock adb）、引擎适配器、统计/回归/精度校验、火焰图与 MCP server（GitHub Actions 在 Python 3.10–3.13 矩阵持续验证）。
 
 ## Known boundaries & Roadmap
 

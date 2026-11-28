@@ -162,3 +162,16 @@ def test_unsupported_convert_with_raises(tmp_path):
     # Act / Assert
     with pytest.raises(PrepareError, match="convert_with"):
         prepare_model(cfg, model)
+
+
+def test_convert_delegates_to_adapter_and_wraps_subprocess_error(tmp_path):
+    tool = tmp_path / "convert_hf_to_gguf.py"
+    tool.write_text("import sys; sys.stderr.write('convert boom'); sys.exit(2)\n", encoding="utf-8")
+    cfg = model_cfg(tmp_path)
+    model = {
+        "id": "m",
+        "path": str(tmp_path / "out.gguf"),
+        "source": {"convert_with": "llama.cpp", "dir": str(tmp_path / "hf")},
+    }
+    with pytest.raises(PrepareError, match="convert boom"):
+        prepare_model(cfg, model)

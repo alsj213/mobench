@@ -13,6 +13,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 
 from mobench.adapters.base import AdapterError, EngineAdapter, _find_binary
 
@@ -31,6 +32,43 @@ class LlamacppAdapter(EngineAdapter):
     def _bench_name(self):
         build = self.cfg.get("build") or {}
         return build.get("bench_bin") or "llama-bench"
+
+    def process_name(self) -> str:
+        return os.path.basename(self._bench_name())
+
+    def validation_identity_params(self, workload: dict) -> dict:
+        workload = workload or {}
+        return {
+            k: v
+            for k, v in {
+                "flash_attn": workload.get("flash_attn"),
+                "type_k": workload.get("cache_type_k"),
+                "type_v": workload.get("cache_type_v"),
+            }.items()
+            if v is not None
+        }
+
+    def convert_model(self, model: dict) -> list[str]:
+        """convert_hf_to_gguf.py from the llama.cpp source_dir."""
+        source = model.get("source") or {}
+        src_dir = (self.cfg.get("build") or {}).get("source_dir") or "."
+        tool = os.path.join(src_dir, "convert_hf_to_gguf.py")
+        if not os.path.isfile(tool):
+            raise AdapterError(
+                f"llama.cpp convert tool not found: {tool} (engine repo missing?)"
+            )
+        hf_dir = source.get("dir")
+        if not hf_dir:
+            raise AdapterError(
+                "convert_with=llama.cpp requires source.dir (HF model directory)"
+            )
+        out = model["path"]
+        os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+        argv = [sys.executable, tool, hf_dir, "-o", out]
+        if source.get("outtype"):
+            argv += ["--outtype", source["outtype"]]
+        subprocess.run(argv, check=True, capture_output=True, text=True)
+        return argv
 
     def resolve_binary(self) -> str:
         path = _find_binary(self.cfg, self._bench_name())

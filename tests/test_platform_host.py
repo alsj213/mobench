@@ -34,12 +34,13 @@ def test_control_disabled_when_env_control_none():
     # Arrange
     platform = HostPlatform({})
     cfg = {"methodology": {"env_control": "none"}}
+    info = {}
 
     # Act
-    platform.control(cfg, {})
+    platform.control(cfg, info)
 
     # Assert
-    assert "disabled" in platform._env_control_label
+    assert "disabled" in info["env_control"]["value"]
 
 
 def test_control_degrades_without_sudo(monkeypatch):
@@ -47,12 +48,13 @@ def test_control_degrades_without_sudo(monkeypatch):
     platform = HostPlatform({})
     monkeypatch.setattr(host_mod.os, "geteuid", lambda: 1000)
     cfg = {"methodology": {"env_control": "auto"}}
+    info = {}
 
     # Act
-    platform.control(cfg, {})
+    platform.control(cfg, info)
 
     # Assert
-    assert "degraded" in platform._env_control_label.lower()
+    assert "degraded" in info["env_control"]["value"].lower()
 
 
 def test_run_tees_output_to_log(tmp_path):

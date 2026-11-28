@@ -325,7 +325,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="校验 BasePlatform 与子类方法签名一致（默认开启）")
     ap.add_argument("--strict-open", action=argparse.BooleanOptionalAction, default=True,
                     help="校验 mobench/ 无裸 open() 调用（默认开启）")
-    ap.add_argument("--strict-boundaries", action="store_true", help="校验核心模块无引擎硬编码")
+    ap.add_argument("--strict-boundaries", action=argparse.BooleanOptionalAction, default=True,
+                    help="校验核心模块无引擎硬编码（默认开启）")
     args = ap.parse_args(argv)
 
     ok = True

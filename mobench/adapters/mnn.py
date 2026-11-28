@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 
 from mobench.adapters.base import AdapterError, EngineAdapter, _find_binary
 
@@ -31,7 +32,9 @@ LLM_ROW = re.compile(r"\|\s*(pp|tg)(\d+)\s*\|\s*([\d.]+)\s*±")
 
 # MNN CV benchmark.out summary row:
 #   [ - ] squeezenetv1.1.mnn  max = 4.681 ms  min = 4.466 ms  avg = 4.574 ms
-CV_SUMMARY = re.compile(r"\s+max\s*=\s*([\d.]+)\s*ms\s+min\s*=\s*([\d.]+)\s*ms\s+avg\s*=\s*([\d.]+)\s*ms")
+CV_SUMMARY = re.compile(
+    r"\s+max\s*=\s*([\d.]+)\s*ms\s+min\s*=\s*([\d.]+)\s*ms\s+avg\s*=\s*([\d.]+)\s*ms"
+)
 
 
 class MnnAdapter(EngineAdapter):
@@ -41,6 +44,39 @@ class MnnAdapter(EngineAdapter):
     def _bench_name(self):
         build = self.cfg.get("build") or {}
         return build.get("bench_bin") or "benchmark.out"
+
+    def process_name(self) -> str:
+        return os.path.basename(self._bench_name())
+
+    def validate_config(self, cfg: dict) -> list[str]:
+        errors = []
+        mnn = cfg.get("mnn")
+        if mnn is not None and not isinstance(mnn, dict):
+            return ["mnn must be a mapping"]
+        if isinstance(mnn, dict) and mnn.get("n_repeat") is not None:
+            n_repeat = mnn["n_repeat"]
+            if isinstance(n_repeat, bool) or not isinstance(n_repeat, int) or n_repeat < 1:
+                errors.append(
+                    f"mnn.n_repeat must be a positive integer (llm_bench -rep), "
+                    f"got {n_repeat!r}"
+                )
+        return errors
+
+    def convert_model(self, model: dict) -> list[str]:
+        """MNNConvert (onnx -> mnn) from the MNN build dir."""
+        source = model.get("source") or {}
+        build = self.cfg.get("build") or {}
+        tool = os.path.join(build.get("bin_dir", ""), "MNNConvert")
+        if not os.path.isfile(tool):
+            raise AdapterError(f"MNNConvert not found: {tool} (set build.bin_dir)")
+        onnx = source.get("dir") or source.get("onnx")
+        if not onnx:
+            raise AdapterError("convert_with=mnn requires source.dir (onnx file)")
+        out = model["path"]
+        os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+        argv = [tool, "--modelFile", onnx, "--MNNModel", out]
+        subprocess.run(argv, check=True, capture_output=True, text=True)
+        return argv
 
     def resolve_binary(self) -> str:
         path = _find_binary(self.cfg, self._bench_name())
@@ -60,18 +96,10 @@ class MnnAdapter(EngineAdapter):
         return (self.cfg.get("mnn") or {}).get("backend")
 
     def _n_repeat(self):
-        """mnn.n_repeat -> llm_bench ``-rep N``; None 表示不传（沿用其默认 5）。
-
-        llm_bench 默认在一次调用内连跑 5 次取均值，中途不冷却。这与 T4 这类
-        "每轮独立冷却、对齐起始温度"的协议冲突：单轮内的发热会被平均进结果，
-        且单轮时长变成 llama 侧（``-r 1``）的数倍。需要一轮一测的档位显式设
-        ``mnn.n_repeat: 1``；不设则行为与既有档位完全一致。
-        """
+        """mnn.n_repeat -> llm_bench ``-rep N``; None 表示不传（沿用其默认 5）。"""
         return (self.cfg.get("mnn") or {}).get("n_repeat")
 
     def version(self) -> str:
-        import subprocess
-
         # llm_bench with no args asserts/crashes — skip the probe for it.
         if not self._is_llm_tool():
             binary = self.resolve_binary()
@@ -84,8 +112,12 @@ class MnnAdapter(EngineAdapter):
                 pass
         source_dir = (self.cfg.get("build") or {}).get("source_dir") or "."
         try:
-            proc = subprocess.run(["git", "-C", source_dir, "log", "--oneline", "-1"],
-                                  capture_output=True, text=True, timeout=15)
+            proc = subprocess.run(
+                ["git", "-C", source_dir, "log", "--oneline", "-1"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
             if proc.returncode == 0 and proc.stdout.strip():
                 return proc.stdout.strip()
         except OSError:
@@ -97,12 +129,24 @@ class MnnAdapter(EngineAdapter):
 
     def build_cmds(self, model: dict, threads: int, rounds: int):
         binary = self.resolve_binary()
+        wl = self.cfg.get("workload") or {}
+        extra_args = [str(arg) for arg in (wl.get("cli_args") or [])]
         if self._is_llm_tool():
             # Official MNN llm_bench: -m <config.json>, -a <backend> (config
             # mnn.backend, default cpu), and prompt/gen from workload.
-            wl = self.cfg.get("workload") or {}
-            cmd = [binary, "-m", model["path"], "-a", self._backend() or "cpu",
-                   "-c", "2", "-t", str(threads), "-fa", "0"]
+            cmd = [
+                binary,
+                "-m",
+                model["path"],
+                "-a",
+                self._backend() or "cpu",
+                "-c",
+                "2",
+                "-t",
+                str(threads),
+                "-fa",
+                "0",
+            ]
             if wl.get("prompt_tokens"):
                 cmd += ["-p", str(wl["prompt_tokens"])]
             if wl.get("gen_tokens"):
@@ -110,16 +154,16 @@ class MnnAdapter(EngineAdapter):
             n_repeat = self._n_repeat()
             if n_repeat is not None:
                 cmd += ["-rep", str(n_repeat)]
-            return [cmd]
+            return [cmd + extra_args]
         if self._is_cv_bench_out():
             # MNN CV benchmark.out CLI: <models folder> loop warmup fw threads
             # precision. Run one measurement per mobench round; the model's
             # own directory (models[].dir, else its parent) holds it alone.
             model_dir = model.get("dir") or os.path.dirname(os.path.abspath(model["path"]))
             cmd = [binary, model_dir, "1", "1", "0", str(threads), "2"]
-            return [cmd]
+            return [cmd + extra_args]
         # Other CV/NLP tools: model file first, threads after.
-        return [[binary, model["path"], "-t", str(threads)]]
+        return [[binary, model["path"], "-t", str(threads), *extra_args]]
 
     def parse(self, log_path: str, model: dict, threads: int, round_no: int) -> list:
         with open(log_path, encoding="utf-8", errors="replace") as fh:
@@ -131,8 +175,9 @@ class MnnAdapter(EngineAdapter):
         records = []
         for key, value in metrics.items():
             metric, unit = LINE_METRICS[key]
-            records.append(self._rec(model, threads, round_no, metric,
-                                     float(value), unit, log_path))
+            records.append(
+                self._rec(model, threads, round_no, metric, float(value), unit, log_path)
+            )
         if not records:
             raise AdapterError(
                 f"cannot parse MNN benchmark output in {log_path}: "
@@ -144,7 +189,7 @@ class MnnAdapter(EngineAdapter):
         wl = self.cfg.get("workload") or {}
         return {k: wl[k] for k in ("prompt_tokens", "gen_tokens") if wl.get(k)} or None
 
-    def _rec(self, model, threads, round_no, metric, value, unit, log_path):
+    def _rec(self, model, threads, round_no, metric, value, unit, log_path, params=None):
         return {
             "schema": "mobench/record@1",
             "engine": self.engine,
@@ -155,7 +200,7 @@ class MnnAdapter(EngineAdapter):
             "threads": threads,
             "precision": model.get("precision"),
             "round": round_no,
-            "params": self._workload_params(),
+            "params": params if params is not None else self._workload_params(),
             "backend": self._backend(),
             "platform": "host",
             "source_log": log_path,
@@ -163,30 +208,56 @@ class MnnAdapter(EngineAdapter):
 
     def _parse_llm_rows(self, text, log_path, model, threads, round_no):
         """Parse llm_bench stdout rows (``pp<n>``/``tg<n>`` + ``t/s``)."""
-        found = {}
-        for kind, _n, tps in LLM_ROW.findall(text):
+        parsed_rows = []
+        for kind, n_raw, tps_raw in LLM_ROW.findall(text):
             try:
-                tps = float(tps)
+                n_val = int(n_raw)
+                tps = float(tps_raw)
             except ValueError:
                 continue
             if tps <= 0:
                 continue
-            if kind == "tg":
-                found.setdefault("gen_tok_s", tps)
-            elif kind == "pp":
-                # prompt throughput tok/s -> per-token ms for a latency metric
-                found.setdefault("prompt_eval_ms_tok", 1000.0 / tps)
+            parsed_rows.append((kind, n_val, tps))
+        multi_pp = len({n for k, n, _ in parsed_rows if k == "pp"}) > 1
+        multi_tg = len({n for k, n, _ in parsed_rows if k == "tg"}) > 1
+        base_params = self._workload_params()
         records = []
-        for key, tps in found.items():
-            if key == "gen_tok_s":
-                records.append(self._rec(model, threads, round_no, "gen_tok_s",
-                                         tps, "tok/s", log_path))
-                records.append(self._rec(model, threads, round_no, "gen_ms_tok",
-                                         1000.0 / tps, "ms/token", log_path))
-            else:
-                records.append(self._rec(model, threads, round_no,
-                                         "prompt_eval_ms_tok", tps,
-                                         "ms/token", log_path))
+        for kind, n_val, tps in parsed_rows:
+            if kind == "tg":
+                params = {**(base_params or {}), "gen_tokens": n_val} if multi_tg else base_params
+                records.append(
+                    self._rec(
+                        model, threads, round_no, "gen_tok_s", tps, "tok/s", log_path, params=params
+                    )
+                )
+                records.append(
+                    self._rec(
+                        model,
+                        threads,
+                        round_no,
+                        "gen_ms_tok",
+                        1000.0 / tps,
+                        "ms/token",
+                        log_path,
+                        params=params,
+                    )
+                )
+            elif kind == "pp":
+                params = (
+                    {**(base_params or {}), "prompt_tokens": n_val} if multi_pp else base_params
+                )
+                records.append(
+                    self._rec(
+                        model,
+                        threads,
+                        round_no,
+                        "prompt_eval_ms_tok",
+                        1000.0 / tps,
+                        "ms/token",
+                        log_path,
+                        params=params,
+                    )
+                )
         return records
 
     @staticmethod
