@@ -320,6 +320,15 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
         except BaseException as r_exc:
             restore_error = r_exc
         final_error = run_error if run_error is not None else restore_error
+        if run_error is None and restore_error is not None:
+            if isinstance(restore_error, RunError):
+                final_error = restore_error
+            elif isinstance(restore_error, Exception):
+                # restore 抛出的普通异常统一收敛为 RunError，让 main 的错误
+                # 出口能干净打印，而不是向用户暴露裸 traceback。
+                final_error = RunError("restore", str(restore_error))
+            # 非 Exception 的 BaseException（KeyboardInterrupt/SystemExit）
+            # 保持原样：写完 run.json 后继续传播。
         try:
             meta["throttle_risk"] = throttled
             meta["measurement_conditions"] = conditions
@@ -349,6 +358,9 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
             atomic_write_json(meta_path, meta)
         if run_error is None and restore_error is not None:
             # 主流程成功但 restore 失败：工件已标无效，仍向上传播该错误。
+            # 普通 Exception 已包装为 RunError，并保留原始异常链。
+            if isinstance(final_error, RunError) and final_error is not restore_error:
+                raise final_error from restore_error
             raise restore_error
 
     return meta

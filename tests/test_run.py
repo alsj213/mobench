@@ -454,7 +454,7 @@ def test_run_cli_forwards_cooldown_and_retry_overrides(tmp_path, monkeypatch):
 
 
 def test_run_restore_failure_after_success_writes_invalid_run_json(tmp_path, monkeypatch):
-    """主流程成功但 restore 抛错：工件标无效后原样传播。"""
+    """主流程成功但 restore 抛错：收敛为 RunError 且工件标无效。"""
     from mobench.platform.host import HostPlatform
 
     monkeypatch.chdir(tmp_path)
@@ -465,14 +465,46 @@ def test_run_restore_failure_after_success_writes_invalid_run_json(tmp_path, mon
 
     monkeypatch.setattr(HostPlatform, "restore", boom)
 
-    with pytest.raises(RuntimeError, match="restore exploded"):
+    with pytest.raises(RunError) as exc:
         run_pipeline(load_config(cfg_path))
+
+    assert exc.value.step == "restore"
+    assert "restore exploded" in str(exc.value)
 
     run_json = list((tmp_path / "results").glob("run_*/run.json"))[0]
     meta = json.loads(run_json.read_text(encoding="utf-8"))
     assert meta["valid"] is False
     assert meta["aborted"] is True
+    assert "[step:restore]" in meta["error"]
     assert "restore exploded" in meta["error"]
+
+
+def test_run_cli_restore_failure_exits_1_cleanly(tmp_path, monkeypatch, capsys):
+    """CLI 下 restore 抛普通异常：干净报错并返回 1，不输出裸 traceback。"""
+    from mobench.platform.host import HostPlatform
+
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+
+    def boom(self):
+        raise RuntimeError("restore exploded")
+
+    monkeypatch.setattr(HostPlatform, "restore", boom)
+
+    code = cli_main(["run", "--config", cfg_path])
+
+    assert code == 1
+    err = capsys.readouterr().err
+    assert "run: error:" in err
+    assert "[step:restore]" in err
+    assert "restore exploded" in err
+    assert "Traceback" not in err
+
+    run_json = list((tmp_path / "results").glob("run_*/run.json"))[0]
+    meta = json.loads(run_json.read_text(encoding="utf-8"))
+    assert meta["valid"] is False
+    assert meta["aborted"] is True
+    assert "[step:restore]" in meta["error"]
 
 
 def test_restore_failure_does_not_mask_original_run_error(tmp_path, monkeypatch):

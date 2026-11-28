@@ -10,6 +10,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 import os
 import subprocess
+import sys
 
 from mobench.config import parse_cpus
 from mobench.io_utils import file_md5 as _stream_file_md5
@@ -30,18 +31,39 @@ def _local_run(cmd, timeout=60):
 
 @contextmanager
 def measurement_session(platform, cfg: dict, threads: int, info: dict | None = None):
-    """统一测量会话：control -> measure_condition -> 执行 -> 保证 restore()。"""
+    """统一测量会话：control -> measure_condition -> 执行 -> 保证 restore()。
+
+    主体成功时，restore() 抛出的普通 Exception 统一包装为 PlatformError；
+    主体已失败时，restore() 的错误只作为告警，绝不掩盖原始异常。
+    """
     target = info if isinstance(info, dict) else {}
     if hasattr(platform, "control"):
         platform.control(cfg, target)
     condition = None
+    body_exc = None
     try:
         if hasattr(platform, "measure_condition"):
             condition = platform.measure_condition(threads)
         yield condition
+    except BaseException as exc:
+        body_exc = exc
+        raise
     finally:
         if hasattr(platform, "restore"):
-            platform.restore()
+            try:
+                platform.restore()
+            except Exception as r_exc:
+                if body_exc is not None:
+                    print(
+                        "warning: restore() failed while handling "
+                        f"{type(body_exc).__name__}: {body_exc}; "
+                        f"keeping the original error (restore error: {r_exc})",
+                        file=sys.stderr,
+                    )
+                elif isinstance(r_exc, PlatformError):
+                    raise
+                else:
+                    raise PlatformError(f"restore failed: {r_exc}") from r_exc
 
 
 class BasePlatform:
