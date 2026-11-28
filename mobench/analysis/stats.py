@@ -107,7 +107,7 @@ def render_markdown(rows):
 
 
 def main(args) -> int:
-    records = read_paths(args.inputs)
+    records = read_paths(args.inputs, include_invalid=getattr(args, "include_invalid", False))
     if not records:
         print("stats: error: no records found "
               + empty_result_hint(args.inputs), file=__import__("sys").stderr)

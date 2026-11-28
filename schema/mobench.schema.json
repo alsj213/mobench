@@ -242,6 +242,17 @@
           "default": 600,
           "description": "Maximum seconds to wait during the pre-run cooldown gate."
         },
+        "cooldown_per_round": {
+          "type": "boolean",
+          "default": false,
+          "description": "Wait until cooldown_c before every individual round instead of once before the run."
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Maximum execution attempts per round when the engine exits non-zero or times out."
+        },
         "freq_floor_mhz": {
           "type": [
             "number",

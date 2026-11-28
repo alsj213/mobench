@@ -35,6 +35,8 @@ DEFAULTS = {
         # 等待阈值与上限；缺省 None = 不等待（零行为，向后兼容）。
         "cooldown_c": None,
         "cooldown_max_s": 600,
+        "cooldown_per_round": False,
+        "max_attempts": 1,
     },
 }
 

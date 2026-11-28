@@ -101,6 +101,12 @@ def build_parser():
     p.add_argument("--threads", type=int, help="override threads")
     p.add_argument("--rounds", type=int, help="override rounds")
     p.add_argument("--label", help="free-form label written into run.json (e.g. k8-b-neon)")
+    p.add_argument("--cooldown-c", type=float, default=None,
+                   help="override methodology.cooldown_c")
+    p.add_argument("--cooldown-per-round", action="store_true",
+                   help="wait for cooldown_c before every round")
+    p.add_argument("--max-attempts", type=int, default=None,
+                   help="retry failed/timed-out round execution up to N times")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_run)
 
@@ -148,6 +154,8 @@ def build_parser():
     p = sub.add_parser("stats", help="multi-run statistics over records")
     p.add_argument("inputs", nargs="+", help="records files or dirs")
     p.add_argument("--cv-threshold", type=float, default=5.0)
+    p.add_argument("--include-invalid", action="store_true",
+                   help="include runs marked invalid by log_audit/freq_audit")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_stats)
 
@@ -158,6 +166,8 @@ def build_parser():
     p.add_argument("--out", default=None, help="output baseline path for save")
     p.add_argument("--threshold", type=float, default=5.0,
                    help="regression alert threshold %% (default 5.0)")
+    p.add_argument("--include-invalid", action="store_true",
+                   help="include runs marked invalid by log_audit/freq_audit")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_regression)
 
@@ -204,6 +214,8 @@ def build_parser():
     p.add_argument("--format", choices=["md", "html", "both", "chart"], default="both")
     p.add_argument("--chart-by", choices=["backend", "engine", "matrix"], default="backend",
                    help="chart 面板内对比维度（backend/engine/matrix）")
+    p.add_argument("--include-invalid", action="store_true",
+                   help="include runs marked invalid by log_audit/freq_audit")
     p.set_defaults(func=cmd_report)
 
     p = sub.add_parser("prepare", help="prepare models (self-provided/download/convert)")

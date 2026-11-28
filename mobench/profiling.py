@@ -225,7 +225,7 @@ import sys  # noqa: E402
 from mobench import flamegraph  # noqa: E402
 from mobench.adapters.base import AdapterError, get_adapter  # noqa: E402
 from mobench.config import ConfigError, load_config  # noqa: E402
-from mobench.platform.base import BasePlatform, PlatformError  # noqa: E402
+from mobench.platform.base import BasePlatform, PlatformError, measurement_session  # noqa: E402
 
 DEFAULT_EVENTS = ["cpu-cycles", "instructions", "cache-misses",
                   "cache-references", "L1-dcache-loads",
@@ -396,33 +396,25 @@ def _profile_host(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
             return None
 
     try:
-        # Same measurement condition as `run`, so profile data is comparable
-        # with benchmark data (design D5). Failure follows the same rules: a
-        # bad explicit pin aborts, an environment without cpufreq degrades.
-        try:
-            condition = platform.measure_condition(threads)
-        except PlatformError as exc:
-            raise RuntimeError("[step:env control] " + str(exc))
-        cmd = platform.with_pin(cmd)
+        with measurement_session(platform, cfg, threads, info=info) as condition:
+            cmd = platform.with_pin(cmd)
 
-        record = _run_tool([perf_bin, "record", "-g", "-F", str(freq), "-o",
-                            perf_local, "--"] + list(cmd))
-        if record is None or record.returncode != 0:
-            detail = ((record.stderr or "") + (record.stdout or "")) if record \
-                else "spawn error"
-            raise RuntimeError(
-                "[step:execution] perf record failed rc=%s; %s"
-                % (record.returncode if record else "n/a", detail.strip()[:300]))
-        stat_text = ""
-        stat = _run_tool([perf_bin, "stat", "-e", ",".join(events), "--"] + list(cmd))
-        if stat is not None:
-            stat_text = (stat.stdout or "") + (stat.stderr or "")
-        script = _run_tool([perf_bin, "script", "-i", perf_local])
-        samples_text = (script.stdout or "") if script else ""
-    finally:
-        # Never leave the machine pinned to performance: everything from
-        # measure_condition onward must restore, including failure paths.
-        platform.restore()
+            record = _run_tool([perf_bin, "record", "-g", "-F", str(freq), "-o",
+                                perf_local, "--"] + list(cmd))
+            if record is None or record.returncode != 0:
+                detail = ((record.stderr or "") + (record.stdout or "")) if record \
+                    else "spawn error"
+                raise RuntimeError(
+                    "[step:execution] perf record failed rc=%s; %s"
+                    % (record.returncode if record else "n/a", detail.strip()[:300]))
+            stat_text = ""
+            stat = _run_tool([perf_bin, "stat", "-e", ",".join(events), "--"] + list(cmd))
+            if stat is not None:
+                stat_text = (stat.stdout or "") + (stat.stderr or "")
+            script = _run_tool([perf_bin, "script", "-i", perf_local])
+            samples_text = (script.stdout or "") if script else ""
+    except PlatformError as exc:
+        raise RuntimeError("[step:env control] " + str(exc))
 
     meta = {
         "schema": "mobench/profile@1",
@@ -514,31 +506,27 @@ def _profile_pipeline_adb(cfg, model_id=None, threads=None, freq=DEFAULT_FREQ,
     top_text = ""
     pulled = False
     try:
-        try:
-            condition = platform.measure_condition(threads)
-        except PlatformError as exc:
-            raise RuntimeError("[step:env control] " + str(exc))
-        cap = platform.run_profiled(cmd, freq=freq, events=events,
-                                    mmap_pages=16384)
-        if cap["record_rc"] != 0:
-            raise RuntimeError(
-                f"[step:execution] simpleperf record failed rc={cap['record_rc']}; "
-                f"sample a workload the engine accepts (raw log saved if any).")
+        with measurement_session(platform, cfg, threads, info=info) as condition:
+            cap = platform.run_profiled(cmd, freq=freq, events=events,
+                                        mmap_pages=16384)
+            if cap["record_rc"] != 0:
+                raise RuntimeError(
+                    f"[step:execution] simpleperf record failed rc={cap['record_rc']}; "
+                    f"sample a workload the engine accepts (raw log saved if any).")
 
-        # device-side flat top
-        try:
-            proc = platform._exec(["shell",
-                                   f"simpleperf report -i {cap['perf_data']} "
-                                   "--sort symbol --percent-limit 0.3"], timeout=300)
-            top_text = proc.stdout or ""
-        except Exception:
-            top_text = ""
+            # device-side flat top
+            try:
+                proc = platform._exec(["shell",
+                                       f"simpleperf report -i {cap['perf_data']} "
+                                       "--sort symbol --percent-limit 0.3"], timeout=300)
+                top_text = proc.stdout or ""
+            except Exception:
+                top_text = ""
 
-        # pull perf.data for the local flamegraph pass
-        pulled = _pull(platform, cap["perf_data"], perf_local)
-    finally:
-        # Never leave the device pinned to performance (design D4 restore).
-        platform.restore()
+            # pull perf.data for the local flamegraph pass
+            pulled = _pull(platform, cap["perf_data"], perf_local)
+    except PlatformError as exc:
+        raise RuntimeError("[step:env control] " + str(exc))
     meta = {
         "schema": "mobench/profile@1",
         "timestamp": ts,

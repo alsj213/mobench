@@ -224,5 +224,87 @@ def test_run_records_per_round_band(tmp_path, monkeypatch):
     assert recs
     assert all("temp_zone" in r["device"] for r in recs)
     assert all("cpu_freq_mhz" in r["device"] for r in recs)
+    assert all("temp_after_c" in r["device"] for r in recs)
     assert "temp_c" in meta["platform"]
     assert "cpu_freq" in meta["platform"]
+    assert meta["platform"]["env_control"]["value"] != "env control not run"
+
+
+def test_run_per_round_cooldown_runs_before_sample_and_retries_save_failed_log(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+    # 构造一个第 1 次失败、第 2 次成功的假 llama-bench
+    marker = tmp_path / "attempt_count.txt"
+    (tmp_path / "bin" / "llama-bench").write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, pathlib, sys\n"
+        "if '--version' in sys.argv:\n"
+        "    print('fake 1.0')\n"
+        "    sys.exit(0)\n"
+        f"m = pathlib.Path({str(marker)!r})\n"
+        "n = int(m.read_text()) + 1 if m.exists() else 1\n"
+        "m.write_text(str(n))\n"
+        "if n == 1:\n"
+        "    print('pointer tag truncated')\n"
+        "    sys.exit(134)\n"
+        "print(json.dumps({'results': [{'n_prompt': 64, 'n_gen': 128, 't_prompt_processing': 3.2, 't_generation': 21.0}]}))\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "bin" / "llama-bench").chmod(0o755)
+
+    # 温度序列：r1a1 降温 48->34(采样34) -> r1a2 降温 46->33(采样33) -> r1跑后49(>45) -> r2 降温 49->35(采样35) -> r2跑后36
+    temps = [48.0, 34.0, 34.0, 46.0, 33.0, 33.0, 49.0, 49.0, 35.0, 35.0, 36.0]
+    from mobench.platform.base import BasePlatform
+
+    def fake_sample(self):
+        t = temps.pop(0) if temps else 35.0
+        return {"temp_c": {"value": t, "zone": "cpu"}, "cpu_freq": {"value_mhz": 2400.0}}
+
+    monkeypatch.setattr(BasePlatform, "sample_thermal", fake_sample)
+    monkeypatch.setattr("mobench.run.time.sleep", lambda _s: None)
+
+    cfg = load_config(cfg_path)
+    cfg["methodology"].update({
+        "cooldown_c": 35.0,
+        "cooldown_per_round": True,
+        "max_attempts": 2,
+    })
+    meta = run_pipeline(cfg)
+    assert meta["valid"] is True
+    assert meta["throttle_risk"] is True
+    assert len(meta["attempts"]) == 3
+    # 每条成功轮次的起始温度都必须等于冷却后的温度（<=35），而不是冷却前的高温
+    recs = [json.loads(line) for line in open(meta["records"], encoding="utf-8")]
+    assert all(r["device"]["temp_c"] <= 35.0 for r in recs)
+    failed_logs = list((tmp_path / "results").glob("run_*/raw_*.failed1"))
+    assert len(failed_logs) == 1
+    assert "pointer tag truncated" in failed_logs[0].read_text(encoding="utf-8")
+
+
+def test_stats_regression_report_skip_invalid_runs_unless_flag(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+    from mobench.platform.base import BasePlatform
+
+    monkeypatch.setattr(
+        BasePlatform,
+        "sample_thermal",
+        lambda self: {"temp_c": {"value": 32.0, "zone": "cpu"}, "cpu_freq": {"value_mhz": 1500.0}},
+    )
+    cfg = load_config(cfg_path)
+    cfg["methodology"]["freq_floor_mhz"] = 2400.0
+    meta = run_pipeline(cfg)
+    assert meta["valid"] is False
+    assert meta["freq_audit"]["valid"] is False
+
+    # 默认跳过无效 run -> stats 返回错误退出码 1
+    assert cli_main(["stats", str(tmp_path / "results")]) == 1
+    assert "skipping invalid run records" in capsys.readouterr().err
+
+    # 显式 --include-invalid 后纳入分析
+    assert cli_main(["stats", str(tmp_path / "results"), "--include-invalid", "--json"]) == 0
+    rows = json.loads(capsys.readouterr().out)
+    assert rows and rows[0]["n"] == 2
+
+    assert cli_main(["report", str(tmp_path / "results"), "--include-invalid", "--out", str(tmp_path / "rpt")]) == 0
+    assert (tmp_path / "rpt" / "benchmark_report.md").is_file()

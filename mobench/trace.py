@@ -18,7 +18,7 @@ import time
 
 from mobench.adapters.base import AdapterError, get_adapter
 from mobench.config import ConfigError, load_config
-from mobench.platform.base import BasePlatform, PlatformError
+from mobench.platform.base import BasePlatform, PlatformError, measurement_session
 
 _HEAD = re.compile(r"\[(\d+)\]\s+\S+\s+([0-9.]+):")
 _STATE_FIRST = re.compile(r"state=(\d+).*?cpu_id=(\d+)")
@@ -146,20 +146,23 @@ def trace_pipeline(cfg, model_id=None, threads=None, dur=20.0,
     results_dir = cfg.get("results_dir", "results")
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = os.path.join(results_dir, f"trace_{ts}")
-    os.makedirs(out_dir, exist_ok=True)
-
-    trace_out = platform.spawn_trace(dur, cats=cats)
-    proc = platform.spawn_engine(cmd)
-    time.sleep(dur)                 # let the engine run under the capture
     try:
-        proc.wait(timeout=30)
-    except Exception:
-        proc.kill()
-    try:
-        trace_out.wait(timeout=30)
-    except Exception:
-        trace_out.kill()
-    text = platform.read_remote_file("/data/local/tmp/mobench/atrace.txt")
+        with measurement_session(platform, cfg, threads, info=info) as condition:
+            os.makedirs(out_dir, exist_ok=True)
+            trace_out = platform.spawn_trace(dur, cats=cats)
+            proc = platform.spawn_engine(cmd)
+            time.sleep(dur)                 # let the engine run under the capture
+            try:
+                proc.wait(timeout=30)
+            except Exception:
+                proc.kill()
+            try:
+                trace_out.wait(timeout=30)
+            except Exception:
+                trace_out.kill()
+            text = platform.read_remote_file("/data/local/tmp/mobench/atrace.txt")
+    except PlatformError as exc:
+        raise RuntimeError("[step:env control] " + str(exc))
     with open(os.path.join(out_dir, "atrace.txt"), "w",
               encoding="utf-8", errors="replace") as fh:
         fh.write(text)
@@ -172,7 +175,7 @@ def trace_pipeline(cfg, model_id=None, threads=None, dur=20.0,
         "engine": cfg["engine"], "engine_version": engine_version,
         "binary": {"path": binary, "md5": platform.file_md5(binary)},
         "model": m["id"], "threads": threads,
-        "platform": info, "n_freq_events": len(events),
+        "platform": info, "condition": condition, "n_freq_events": len(events),
         "source_log": os.path.join(out_dir, "atrace.txt"),
         "note": "采样窗含 idle 前后段; low_freq_share 含 idle, 非降频判定",
         **summ,

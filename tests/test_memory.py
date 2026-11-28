@@ -111,3 +111,40 @@ def test_mem_pipeline_collects_samples_detects_leak_and_restores(tmp_path, monke
     assert mem_json["schema"] == "mobench/mem@1"
     csv_rows = list(csv.reader(open(os.path.join(meta["out_dir"], "mem.csv"), encoding="utf-8")))
     assert len(csv_rows) == len(rss_series) + 1
+
+
+def test_mem_pipeline_restores_on_spawn_error(tmp_path):
+    bench = tmp_path / "llama-bench"
+    bench.write_text("#!/bin/sh\n", encoding="utf-8")
+    calls = []
+
+    class BoomPlatform:
+        def preflight(self):
+            return {"platform": {"value": "adb"}}
+
+        def measure_condition(self, threads):
+            calls.append("measure")
+            return {"pin": {"cpus": [4], "mask": "10", "origin": "auto"}, "freq": {"locked": True}}
+
+        def spawn_engine(self, cmd):
+            raise OSError("adb crashed")
+
+        def pidof(self, name):
+            return ""
+
+        def read_proc_status(self, pid):
+            return None
+
+        def restore(self):
+            calls.append("restore")
+
+    cfg = {
+        "engine": "llamacpp",
+        "build": {"bin_dir": str(tmp_path), "bench_bin": "llama-bench"},
+        "models": [{"id": "qwen", "path": str(tmp_path / "m.gguf")}],
+        "workload": {"threads": [4], "rounds": 1},
+        "results_dir": str(tmp_path / "results"),
+    }
+    with pytest.raises(OSError, match="adb crashed"):
+        memory.mem_pipeline(cfg, _platform=BoomPlatform())
+    assert calls == ["measure", "restore"]

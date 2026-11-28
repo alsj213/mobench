@@ -191,7 +191,27 @@ def _collect_record_files(path: str) -> list:
     return sorted(found)
 
 
-def read_paths(inputs) -> list:
+def _run_invalid_reason(record_file: str) -> str | None:
+    """检查同目录 run.json 的审计状态；无效时返回可读原因。"""
+    run_json = os.path.join(os.path.dirname(os.path.abspath(record_file)), "run.json")
+    if not os.path.isfile(run_json):
+        return None
+    try:
+        with open(run_json, encoding="utf-8") as fh:
+            meta = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    reasons = []
+    if meta.get("valid") is False:
+        reasons.append("valid=false")
+    if (meta.get("log_audit") or {}).get("valid") is False:
+        reasons.append("log_audit.valid=false")
+    if (meta.get("freq_audit") or {}).get("valid") is False:
+        reasons.append("freq_audit.valid=false")
+    return ", ".join(reasons) if reasons else None
+
+
+def read_paths(inputs, include_invalid: bool = False) -> list:
     """Expand files/dirs into parsed records (dirs scanned recursively)."""
     samples = []
     for path in inputs:
@@ -202,6 +222,15 @@ def read_paths(inputs) -> list:
         for f in files:
             if not os.path.exists(f):
                 continue
+            if not include_invalid:
+                bad_reason = _run_invalid_reason(f)
+                if bad_reason:
+                    print(
+                        f"Warning: skipping invalid run records {f} ({bad_reason}); "
+                        "pass --include-invalid to include",
+                        file=sys.stderr,
+                    )
+                    continue
             try:
                 samples.extend(iter_records(f))
             except Exception as exc:  # tolerate a single bad file

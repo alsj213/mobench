@@ -10,6 +10,8 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import shutil
+import subprocess
 import sys
 import time
 
@@ -39,7 +41,7 @@ def _model_md5(platform, path):
         return {"error": str(exc)}
 
 
-def _cooldown_wait(platform, methodology, emit, sleep=time.sleep, interval=30):
+def _cooldown_wait(platform, methodology, emit, sleep=None, interval=30):
     """Wait (optionally) until the hottest zone ≤ methodology.cooldown_c.
 
     Fail-open：超时带警告继续（reached=false 如实记录），绝不因等待而失败。
@@ -47,6 +49,7 @@ def _cooldown_wait(platform, methodology, emit, sleep=time.sleep, interval=30):
     4.670ms），run 协议需要冷却间隔才能保住 <1% 判决的可信度
     （add-thermal-band-monitor）。未配置 cooldown_c 时为零行为（返回 None）。
     """
+    sleep = time.sleep if sleep is None else sleep
     target = methodology.get("cooldown_c")
     if target is None:
         return None
@@ -141,16 +144,18 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
         meta["label"] = label
 
     # -- log probes (optional; compile before any device time is spent) --------
+    methodology = dict(cfg.get("methodology") or {})
     try:
-        log_checks = log_probe.compile_checks(cfg.get("methodology") or {})
+        log_checks = log_probe.compile_checks(methodology)
     except log_probe.LogProbeError as exc:
         raise RunError("config", str(exc))
 
-    # -- thermal frequency floor (optional; 跑后采样判违规) ---------------------
-    freq_floor = (cfg.get("methodology") or {}).get("freq_floor_mhz")
-
-    # -- env control ----------------------------------------------------------
-    platform.control(cfg, meta)
+    # -- thermal frequency floor & round retry controls -----------------------
+    freq_floor = methodology.get("freq_floor_mhz")
+    cooldown_per_round = bool(methodology.get("cooldown_per_round", False))
+    max_attempts = int(methodology.get("max_attempts") or 1)
+    if max_attempts < 1:
+        raise RunError("config", f"methodology.max_attempts must be >= 1, got {max_attempts}")
 
     # -- execute: threads x rounds, tee raw logs ------------------------------
     def _emit(step, message):
@@ -158,17 +163,23 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
         stream = sys.stderr if json_mode else sys.stdout
         print(f"[run] step:{step} {message}", file=stream)
 
-    # -- cooldown gate (optional; fail-open) ----------------------------------
-    cooldown = _cooldown_wait(platform, cfg.get("methodology") or {}, _emit)
-    if cooldown is not None:
-        _emit("cooldown",
-              f"target ≤{cooldown['target_c']}°C reached={cooldown['reached']} "
-              f"after {cooldown['waited_s']}s (now {cooldown['temp_c']}°C)")
-
     conditions = {}
     log_violations = []
     freq_violations = []
+    attempts_log = []
+    cooldown = None
     try:
+        # -- env control ------------------------------------------------------
+        platform.control(cfg, meta)
+
+        # -- cooldown gate (run-level unless cooldown_per_round=True) ---------
+        if not cooldown_per_round:
+            cooldown = _cooldown_wait(platform, methodology, _emit)
+            if cooldown is not None:
+                _emit("cooldown",
+                      f"target ≤{cooldown['target_c']}°C reached={cooldown['reached']} "
+                      f"after {cooldown['waited_s']}s (now {cooldown['temp_c']}°C)")
+
         for m in models:
             for threads in threads_list:
                 # Condition is per thread count: the selected CPU set depends
@@ -183,25 +194,62 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
                       f" freq_locked={condition['freq']['locked']}")
                 for rnd in range(1, rounds + 1):
                     cmd = adapter.build_cmds(m, threads, rounds=1)[0]
-                    # 每轮跑测前实时采样性能档（热状态是测量条件的一部分；
-                    # 2026-10-09 热漂移曾使 <1% 判决失效——add-thermal-band-monitor）
-                    band = platform.sample_thermal()
                     log_path = os.path.join(
                         run_dir, f"raw_{m['id']}_t{threads}_r{rnd}.log")
-                    _emit("execution", " ".join(cmd))
-                    rc = platform.run(cmd, log_path, echo=not json_mode)
+                    rc = None
+                    band = None
+                    for attempt in range(1, max_attempts + 1):
+                        round_cool = None
+                        if cooldown_per_round:
+                            round_cool = _cooldown_wait(platform, methodology, _emit)
+                            if round_cool is not None:
+                                _emit("cooldown",
+                                      f"r{rnd} a{attempt} target ≤{round_cool['target_c']}°C "
+                                      f"reached={round_cool['reached']} after {round_cool['waited_s']}s "
+                                      f"(now {round_cool['temp_c']}°C)")
+                        # 冷却完成后再采跑前热态，确保记录真实起始温度与频率
+                        band = platform.sample_thermal()
+                        _emit("execution", " ".join(cmd))
+                        try:
+                            rc = platform.run(cmd, log_path, echo=not json_mode)
+                        except subprocess.TimeoutExpired:
+                            rc = 124
+                        if max_attempts > 1 or cooldown_per_round:
+                            attempts_log.append({
+                                "model": m["id"],
+                                "threads": threads,
+                                "round": rnd,
+                                "attempt": attempt,
+                                "start_temp_c": (band.get("temp_c") or {}).get("value"),
+                                "cooldown": round_cool,
+                                "rc": rc,
+                            })
+                        if rc == 0:
+                            break
+                        if attempt < max_attempts:
+                            failed = f"{log_path}.failed{attempt}"
+                            if os.path.exists(log_path):
+                                shutil.copy2(log_path, failed)
+                            _emit("execution",
+                                  f"attempt {attempt}/{max_attempts} exited {rc}; "
+                                  f"saved {os.path.basename(failed)} and retrying")
                     if rc != 0:
                         raise RunError("execution",
                                        f"engine exited {rc}; raw log: {log_path}")
-                    if freq_floor is not None:
-                        # 跑后紧贴采样：热降频发生在这里（THERMAL-DIRTY 事故：
-                        # 5 连跑降到 1862MHz 的数据直到跑完才被人工发现）。
-                        after_band = platform.sample_thermal()
-                        mhz = (after_band.get("cpu_freq") or {}).get("value_mhz")
-                        if mhz is not None and mhz < freq_floor:
-                            freq_violations.append({
-                                "model": m["id"], "threads": threads, "round": rnd,
-                                "freq_mhz": mhz, "floor_mhz": freq_floor})
+                    # 每轮跑后紧贴采样：捕捉运行中升温与热降频（THERMAL-DIRTY 闭环）
+                    after_band = platform.sample_thermal()
+                    before_temp = (band.get("temp_c") or {}).get("value")
+                    after_temp = (after_band.get("temp_c") or {}).get("value")
+                    temps = [t for t in (before_temp, after_temp) if isinstance(t, (int, float))]
+                    max_temp = max(temps) if temps else None
+                    if max_temp is not None and max_temp > TEMP_THROTTLE_C:
+                        throttled = True
+                    before_mhz = (band.get("cpu_freq") or {}).get("value_mhz")
+                    after_mhz = (after_band.get("cpu_freq") or {}).get("value_mhz")
+                    if freq_floor is not None and after_mhz is not None and after_mhz < freq_floor:
+                        freq_violations.append({
+                            "model": m["id"], "threads": threads, "round": rnd,
+                            "freq_mhz": after_mhz, "floor_mhz": freq_floor})
                     if log_checks:
                         forb = log_probe.scan_forbid(log_path, log_checks)
                         if forb:
@@ -222,9 +270,12 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
                     for rec in parsed:
                         rec["platform"] = platform.name  # actual run platform (host/adb)
                         rec["device"] = {
-                            "temp_c": band["temp_c"].get("value"),
-                            "temp_zone": band["temp_c"].get("zone"),
-                            "cpu_freq_mhz": band["cpu_freq"].get("value_mhz"),
+                            "temp_c": before_temp,
+                            "temp_after_c": after_temp,
+                            "temp_max_c": max_temp,
+                            "temp_zone": (band.get("temp_c") or {}).get("zone") or (after_band.get("temp_c") or {}).get("zone"),
+                            "cpu_freq_mhz": before_mhz,
+                            "cpu_freq_after_mhz": after_mhz,
                             "platform": info.get("platform", {}).get("value"),
                             # Measurement condition travels with every value,
                             # so a report can always state what produced it.
@@ -236,9 +287,13 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
     finally:
         platform.restore()
 
+    meta["throttle_risk"] = throttled
     meta["measurement_conditions"] = conditions
+    meta["valid"] = (not log_violations) and (not freq_violations)
     if cooldown is not None:
         meta["cooldown"] = cooldown
+    if attempts_log:
+        meta["attempts"] = attempts_log
     if log_checks:
         meta["log_audit"] = {"valid": not log_violations,
                              "violations": log_violations}
@@ -261,6 +316,15 @@ def main(args) -> int:
                     + ", ".join(BUILTIN_ENGINES)
                 )
             cfg = {**cfg, "engine": args.engine}
+        meth_overrides = {}
+        if getattr(args, "cooldown_c", None) is not None:
+            meth_overrides["cooldown_c"] = args.cooldown_c
+        if getattr(args, "cooldown_per_round", False):
+            meth_overrides["cooldown_per_round"] = True
+        if getattr(args, "max_attempts", None) is not None:
+            meth_overrides["max_attempts"] = args.max_attempts
+        if meth_overrides:
+            cfg = {**cfg, "methodology": {**(cfg.get("methodology") or {}), **meth_overrides}}
         meta = run_pipeline(cfg, model_filter=args.model,
                             threads_override=[args.threads] if args.threads else None,
                             rounds_override=args.rounds, json_mode=args.json,

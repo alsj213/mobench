@@ -321,7 +321,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="mobench 统一验证入口")
     ap.add_argument("--skip-pytest", action="store_true", help="跳过 pytest（用于 CI 轻量卫生检查 job）")
     ap.add_argument("--require-ruff", action="store_true", help="缺少 ruff 时直接判失败")
-    ap.add_argument("--strict-signatures", action="store_true", help="校验 BasePlatform 与子类方法签名一致")
+    ap.add_argument("--strict-signatures", action=argparse.BooleanOptionalAction, default=True,
+                    help="校验 BasePlatform 与子类方法签名一致（默认开启）")
     ap.add_argument("--strict-open", action="store_true", help="校验 mobench/ 无裸 open() 调用")
     ap.add_argument("--strict-boundaries", action="store_true", help="校验核心模块无引擎硬编码")
     args = ap.parse_args(argv)
