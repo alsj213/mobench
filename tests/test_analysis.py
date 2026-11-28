@@ -1,6 +1,5 @@
 """Analysis module tests over canonical records (spec: methodology/power/regression)."""
 import json
-import textwrap
 
 import pytest
 
@@ -278,3 +277,57 @@ def test_stats_and_regression_separate_backends_and_platforms(tmp_path):
     assert {(r["backend"], r["platform"]) for r in rows} == {
         ("cpu", "host"), ("opencl", "host"), ("cpu", "adb")
     }
+
+
+# -- Wave 5 加固：表格 backend/platform 与回归未匹配组汇报 -------------------
+
+def test_stats_markdown_shows_backend_and_platform(tmp_path):
+    src = tmp_path / "raw.log"
+    src.write_text("raw", encoding="utf-8")
+    p = tmp_path / "be.csv"
+    append_record(str(p), {
+        "schema": RECORD_SCHEMA, "engine": "mnn", "workload_id": "q",
+        "metric": "gen_tok_s", "value": 20.0, "unit": "tok/s",
+        "threads": 4, "precision": "q4", "backend": "cpu",
+        "platform": "adb", "source_log": str(src),
+    })
+    rows = stats_mod.build_rows(list(iter_records(str(p))))
+
+    md = stats_mod.render_markdown(rows)
+
+    assert "| engine | backend | platform |" in md
+    assert "| mnn | cpu | adb |" in md
+
+
+def test_regression_partial_overlap_reports_unmatched_counts(tmp_path):
+    """部分重叠：保留匹配行，同时汇报两侧被丢弃的组数。"""
+    log = tmp_path / "raw.log"
+    log.write_text("x", encoding="utf-8")
+    baseline = tmp_path / "partial.json"
+    base = [_real_shape_rec(512, v, str(log)) for v in (5.4, 5.41, 5.39)]
+    reg_mod.save_baseline(str(baseline), base)
+    cur = ([_real_shape_rec(512, v, str(log)) for v in (5.3, 5.31, 5.29)]
+           + [_real_shape_rec(1024, v, str(log)) for v in (9.0, 9.1)])
+
+    result = reg_mod.compare(str(baseline), cur)
+
+    assert len(result["rows"]) == 1
+    assert result["unmatched_current"] == 1
+    assert result["unmatched_baseline"] == 0
+    assert "discarded 1 current group(s)" in result["note"]
+
+
+def test_regression_zero_overlap_keeps_original_note(tmp_path):
+    log = tmp_path / "raw.log"
+    log.write_text("x", encoding="utf-8")
+    baseline = tmp_path / "zero.json"
+    reg_mod.save_baseline(str(baseline),
+                          [_real_shape_rec(512, v, str(log)) for v in (5.4, 5.41)])
+    cur = [_real_shape_rec(1024, v, str(log)) for v in (9.0, 9.1)]
+
+    result = reg_mod.compare(str(baseline), cur)
+
+    assert result["rows"] == []
+    assert result["unmatched_current"] == 1
+    assert result["unmatched_baseline"] == 1
+    assert "no overlapping groups" in result["note"]

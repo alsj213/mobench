@@ -18,6 +18,7 @@ import datetime
 import hashlib
 import json
 import os
+import subprocess
 import sys
 
 from mobench.adapters.base import AdapterError, get_adapter
@@ -132,9 +133,18 @@ def _run_side(cfg, cfg_path, side, model, adapter, platform, threads,
         log_path = os.path.join(out_dir, log_name)
         if not json_mode:
             print(f"[validate] side:{side} {' '.join(job['cmd'])}")
-        rc = platform.run(job["cmd"], log_path, echo=not json_mode)
+        timed_out = False
+        try:
+            rc = platform.run(job["cmd"], log_path, echo=not json_mode)
+        except subprocess.TimeoutExpired:
+            # 单个仪器超时只降级该仪器，其余仪器与完整 validate.json 继续。
+            timed_out = True
+            rc = None
         entry = {"log": log_name, "cmd": job["cmd"]}
-        if rc != 0:
+        if timed_out:
+            entry.update({"status": "unavailable",
+                          "reason": "engine timed out"})
+        elif rc != 0:
             entry.update({"status": "unavailable",
                           "reason": f"engine exited {rc}"})
         else:
@@ -257,6 +267,7 @@ def run_validation(cfg, config_b=None, out_dir=None, threads=None,
     controls = build_controls(cfg, model["path"], platform, threads)
 
     model_b, threads_b, controls_b = None, None, None
+    platform_b = None
     if config_b is not None:
         if config_b.get("engine") != cfg.get("engine"):
             raise ValidationError(
@@ -268,9 +279,18 @@ def run_validation(cfg, config_b=None, out_dir=None, threads=None,
                 "A/B configs must declare the same model id as models[0]")
         model_b = models_b[0]
         threads_b = threads_override or ((config_b.get("workload") or {}).get("threads") or [threads])[0]
-        _check_files(config_b, model_b, platform)
+        # side B 使用独立平台实例：其 bin_dir/设备可能与 A 不同，复用 A 的
+        # platform 会让 _push/_sync 缓存串味。
+        platform_b = BasePlatform.make(config_b)
+        if (config_b.get("platform") or {}) != (cfg.get("platform") or {}):
+            try:
+                platform_b.preflight()
+            except Exception as exc:
+                raise ValidationError(
+                    f"platform preflight (side b): {exc}") from exc
+        _check_files(config_b, model_b, platform_b)
         try:
-            controls_b = build_controls(config_b, model_b["path"], platform, threads_b)
+            controls_b = build_controls(config_b, model_b["path"], platform_b, threads_b)
         except OSError as exc:
             raise ValidationError(f"cannot fingerprint A/B controls: {exc}") from exc
         diffs = controls_diff(controls, controls_b)
@@ -291,7 +311,7 @@ def run_validation(cfg, config_b=None, out_dir=None, threads=None,
     if config_b is not None:
         adapter_b = get_adapter(config_b)
         sides["b"] = _run_side(config_b, config_b_path, "b", model_b, adapter_b,
-                               platform, threads_b, out_dir, json_mode)
+                               platform_b, threads_b, out_dir, json_mode)
 
     cov_a = _coverage(val_cfg, sides["a"]["instruments"])
     if "b" in sides:
@@ -319,12 +339,20 @@ def run_validation(cfg, config_b=None, out_dir=None, threads=None,
 
 
 def any_instrument_ok(artifact) -> bool:
-    """True when side a produced at least one usable instrument result."""
-    for instrument in (artifact.get("sides", {}).get("a", {})
-                       .get("instruments") or {}).values():
-        if instrument.get("status") in ("ok", "partial"):
-            return True
-    return False
+    """True only when every side produced at least one usable instrument.
+
+    单侧查 ``a``；A/B 双列时 ``a`` 与 ``b`` 都必须至少有一个 ok/partial
+    仪器，任一侧全挂都不能宣称“有可用结果”。
+    """
+    sides = artifact.get("sides") or {}
+    if not sides:
+        return False
+    for payload in sides.values():
+        instruments = (payload or {}).get("instruments") or {}
+        if not any(inst.get("status") in ("ok", "partial")
+                   for inst in instruments.values()):
+            return False
+    return True
 
 
 def render_summary(artifact) -> str:

@@ -250,6 +250,10 @@ def validate(cfg: dict) -> list:
             errors.append(
                 f"methodology.cooldown_c must be a non-negative number, got {cooldown_c!r}"
             )
+        if methodology.get("cooldown_per_round") is True and cooldown_c is None:
+            errors.append(
+                "methodology.cooldown_per_round requires methodology.cooldown_c"
+            )
         cooldown_max_s = methodology.get("cooldown_max_s")
         if cooldown_max_s is not None and not _non_neg_int(cooldown_max_s):
             errors.append(
@@ -262,10 +266,18 @@ def validate(cfg: dict) -> list:
             )
         for key in ("freq_floor_mhz", "timeout_s"):
             val = methodology.get(key)
-            if val is not None and (not _number(val) or val <= 0):
-                errors.append(
-                    f"methodology.{key} must be a positive number, got {val!r}"
-                )
+            # timeout_s 与 schema 的 minimum: 1 对齐（>= 1 秒）。
+            if key == "timeout_s":
+                minimum_ok = val is not None and _number(val) and val >= 1
+            else:
+                minimum_ok = val is not None and _number(val) and val > 0
+            if val is not None and not minimum_ok:
+                if key == "timeout_s":
+                    errors.append(
+                        f"methodology.timeout_s must be >= 1, got {val!r}")
+                else:
+                    errors.append(
+                        f"methodology.{key} must be a positive number, got {val!r}")
         # Format-only check: whether the indexes exist on this machine is
         # verified by the platform layer once CPUs are discovered.
         try:

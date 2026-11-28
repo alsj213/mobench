@@ -1,5 +1,4 @@
 """Tests for report --format chart (report-multipanel-chart)."""
-import json
 
 from mobench import report as report_mod
 from mobench.records import RECORD_SCHEMA, append_record, read_paths

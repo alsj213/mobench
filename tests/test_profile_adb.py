@@ -46,7 +46,7 @@ def test_run_profiled_record_command(tmp_path, monkeypatch):
 
 
 def test_deploy_command_remaps_bin_and_ld_library(tmp_path, monkeypatch):
-    plat, calls = _platform(tmp_path, monkeypatch)
+    plat, _calls = _platform(tmp_path, monkeypatch)
     cmd = [str(tmp_path / "bin" / "llm_bench"), "-m", "/no/such/model.json"]
     shell = plat._deploy_command(cmd)
     assert shell.startswith("cd " + REMOTE_DIR + "/bin && LD_LIBRARY_PATH=. ")

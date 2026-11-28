@@ -15,9 +15,14 @@ Wire format::
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 
 from mobench.io_utils import file_md5
+
+# 只接受真正的共享库：``*.so`` 或以数字版本结尾的 ``*.so.N[.N...]``。
+# 这样 ``libggml.so.bak`` / ``libggml.so.swp`` 等编辑器/备份残留不会污染哈希。
+_VERSIONED_SO_RE = re.compile(r"\.so\.\d+(?:\.\d+)*$")
 
 
 def artifact_set_md5(binary_path: str) -> str:
@@ -26,7 +31,9 @@ def artifact_set_md5(binary_path: str) -> str:
         (
             f
             for f in p.parent.iterdir()
-            if f.is_file() and f != p and (f.name.endswith(".so") or ".so." in f.name)
+            if f.is_file()
+            and f != p
+            and (f.name.endswith(".so") or bool(_VERSIONED_SO_RE.search(f.name)))
         ),
         key=lambda f: f.name,
     )

@@ -50,7 +50,7 @@ class AdbPlatform(BasePlatform):
         self.adb = p.get("adb")
         self.device_id = p.get("device_id")
         self._pushed = {}  # local path -> remote rel path
-        self._synced = {}  # tag -> synced remote dir (cache)
+        self._synced = {}  # (tag, local_dir) -> synced remote dir (cache)
 
     # -- adb helpers --------------------------------------------------------
     def _exec(self, args, timeout=120):
@@ -294,11 +294,12 @@ class AdbPlatform(BasePlatform):
         raise PlatformError(
             f"adb push failed for {local_path}: {(last.stderr or last.stdout).strip()}")
 
-    def _remote_file_matches(self, remote_path: str, local_md5: str) -> bool:
+    def _remote_file_matches(self, remote_path: str, local_md5: str,
+                             timeout: float = 120) -> bool:
         """检查设备端文件 MD5 是否与本地一致，实现跨进程幂等跳过推包。"""
         rc, out = self._shell(
             [f"md5sum {shlex.quote(remote_path)} 2>/dev/null"],
-            timeout=120,
+            timeout=timeout,
         )
         if rc != 0 or not out:
             return False
@@ -313,7 +314,8 @@ class AdbPlatform(BasePlatform):
         local_md5 = file_md5(local_path)
         remote_dir = f"{REMOTE_DIR}/files/{local_md5[:12]}"
         remote = f"{remote_dir}/{os.path.basename(local_path)}"
-        if not self._remote_file_matches(remote, local_md5):
+        if not self._remote_file_matches(
+                remote, local_md5, timeout=push_timeout(local_path)):
             self._shell([f"mkdir -p {shlex.quote(remote_dir)}"])
             self._push_file(local_path, remote)
         self._pushed[local_path] = remote
@@ -326,11 +328,25 @@ class AdbPlatform(BasePlatform):
         name = os.path.basename(abs_dir) or "root"
         return f"models/{name}_{digest}"
 
+    @staticmethod
+    def _bin_dir_tag(local_dir: str) -> str:
+        """bin 目录的远端唯一标签：同名不同路径不得共享远端目录。
+
+        多个 A/B 构建目录若都叫 ``bin``，旧实现会把它们映射到同一个
+        ``mobench/bin``，``clean_stale=True`` 时会互删对方产物。把绝对路径
+        哈希进标签即可隔离并发/交替运行的双方。
+        """
+        abs_dir = os.path.abspath(local_dir).rstrip("/")
+        digest = hashlib.md5(abs_dir.encode("utf-8")).hexdigest()[:8]
+        name = os.path.basename(abs_dir) or "bin"
+        return f"bin/{name}_{digest}"
+
     def _sync_dir(self, local_dir, tag, chmod_exec=False, clean_stale=False):
         """Push a local directory to a cached remote dir (used for bin & models)."""
         local_dir = os.path.abspath(local_dir)
-        if tag in self._synced:
-            return self._synced[tag]
+        cache_key = (tag, local_dir)
+        if cache_key in self._synced:
+            return self._synced[cache_key]
         remote = REMOTE_DIR + "/" + tag
         self._shell([f"mkdir -p {shlex.quote(remote)}"])
         local_files = [
@@ -359,11 +375,12 @@ class AdbPlatform(BasePlatform):
             path = os.path.join(local_dir, name)
             remote_file = remote + "/" + name
             local_md5 = file_md5(path)
-            if not self._remote_file_matches(remote_file, local_md5):
+            if not self._remote_file_matches(
+                    remote_file, local_md5, timeout=push_timeout(path)):
                 self._push_file(path, remote_file)
         if chmod_exec and local_files:  # adb push resets the exec bit
             self._shell([f"chmod 755 {shlex.quote(remote)}/*"])
-        self._synced[tag] = remote
+        self._synced[cache_key] = remote
         return remote
 
     def _map_arg(self, arg):
@@ -401,17 +418,21 @@ class AdbPlatform(BasePlatform):
             os.path.abspath(arg0) == os.path.abspath(
                 os.path.join(bin_dir, os.path.basename(arg0))))
         remote_cmd = []
+        remote_bin = None
         if in_bin_dir:
             # Dynamic-linked engine tools (RPATH $ORIGIN): sync the whole dir
             # and run with LD_LIBRARY_PATH pointing at the synced libraries.
-            self._sync_dir(bin_dir, "bin", chmod_exec=True, clean_stale=True)
+            # 远端目录按本地绝对路径哈希隔离，A/B 两个 bin 目录不会互删。
+            remote_bin = self._sync_dir(
+                bin_dir, self._bin_dir_tag(bin_dir),
+                chmod_exec=True, clean_stale=True)
             remote_cmd.append("./" + os.path.basename(arg0))
         else:
             remote_cmd.append(self._map_arg(arg0))
         for arg in cmd[1:]:
             remote_cmd.append(self._map_arg(arg))
         env_prefix = (
-            f"cd {shlex.quote(REMOTE_DIR + '/bin')} && LD_LIBRARY_PATH=. "
+            f"cd {shlex.quote(remote_bin)} && LD_LIBRARY_PATH=. "
             if in_bin_dir
             else f"cd {shlex.quote(REMOTE_DIR)} && "
         )
@@ -435,9 +456,32 @@ class AdbPlatform(BasePlatform):
         shell_script = self._deploy_command(cmd)
         raw_timeout = (self.cfg.get("methodology") or {}).get("timeout_s")
         timeout = 600 if raw_timeout is None else raw_timeout
-        proc = self._exec(["shell", shell_script], timeout=timeout)
-        out = proc.stdout
         with open(log_path, "w", encoding="utf-8") as fh:
+            try:
+                proc = self._exec(["shell", shell_script], timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                # 超时同样要留证：把已产生的 stdout/stderr 落盘再追加显式标记，
+                # 否则日志为空会让“超时”看起来像“没有任何输出”。
+                for stream in (exc.stdout, exc.stderr):
+                    if not stream:
+                        continue
+                    if isinstance(stream, bytes):
+                        stream = stream.decode("utf-8", errors="replace")
+                    fh.write(stream)
+                fh.write(f"\n[mobench] adb command timed out after {timeout}s\n")
+                fh.flush()
+                # best-effort 清理设备端孤儿进程；清理失败不得掩盖超时本身。
+                proc_name = os.path.basename(str(cmd[0]))
+                try:
+                    self._shell([
+                        f"pkill -9 -x {shlex.quote(proc_name)} 2>/dev/null "
+                        f"|| killall -9 {shlex.quote(proc_name)} 2>/dev/null "
+                        f"|| true"
+                    ], timeout=15)
+                except Exception:
+                    pass
+                raise
+            out = proc.stdout
             fh.write(out)
             fh.write(proc.stderr)
         if echo:

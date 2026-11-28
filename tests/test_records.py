@@ -265,3 +265,65 @@ def test_group_key_separates_backend_and_platform(tmp_path):
     ocl_host = make_rec(tmp_path, backend="opencl", platform="host")
     cpu_adb = make_rec(tmp_path, backend="cpu", platform="adb")
     assert len({group_key(cpu_host), group_key(ocl_host), group_key(cpu_adb)}) == 3
+
+
+# -- Wave 5 加固：溯源优先级与坏 run.json 拦截 -----------------------------
+
+
+def test_resolve_prefers_archive_dir_over_cwd_same_basename(tmp_path, monkeypatch):
+    """归档目录存在正确日志时，CWD 同名文件不得抢占溯源。"""
+    work = tmp_path / "work"
+    work.mkdir()
+    cwd_log = work / "raw_m_t4_r1.log"
+    cwd_log.write_text("cwd-decoy\n", encoding="utf-8")
+    archive = tmp_path / "archive" / "run_1"
+    archive.mkdir(parents=True)
+    archive_log = archive / "raw_m_t4_r1.log"
+    archive_log.write_text("real-run-log\n", encoding="utf-8")
+    rec_file = archive / "records.jsonl"
+    monkeypatch.chdir(work)
+    append_record(str(rec_file),
+                  make_rec(tmp_path, source_log="raw_m_t4_r1.log"))
+
+    got = list(iter_records(str(rec_file)))
+
+    assert len(got) == 1
+    assert got[0]["source_log"] == str(archive_log)
+
+
+@pytest.mark.parametrize(
+    ("payload", "reason"),
+    [("{not json", "unreadable run.json"), ("[1, 2, 3]", "malformed run.json")],
+)
+def test_run_invalid_reason_blocks_broken_or_malformed_run_json(
+        tmp_path, payload, reason):
+    from mobench.records import _run_invalid_reason
+
+    run_dir = tmp_path / "run_bad"
+    run_dir.mkdir()
+    src = run_dir / "raw.log"
+    src.write_text("raw\n", encoding="utf-8")
+    rec_file = run_dir / "records.jsonl"
+    append_record(str(rec_file), make_rec(tmp_path, source_log=str(src)))
+    (run_dir / "run.json").write_text(payload, encoding="utf-8")
+
+    assert _run_invalid_reason(str(rec_file)) == reason
+    assert read_paths([str(run_dir)]) == []
+
+
+def test_append_record_accepts_relative_source_log_in_archive_without_cwd_copy(tmp_path, monkeypatch):
+    """CWD 无同名文件时，向归档目录追加相对 source_log 的记录也应基于 records 目录校验。"""
+    work = tmp_path / "work"
+    work.mkdir()
+    archive = tmp_path / "archive" / "run_1"
+    archive.mkdir(parents=True)
+    archive_log = archive / "raw_m_t4_r1.log"
+    archive_log.write_text("archive-only-log\n", encoding="utf-8")
+    rec_file = archive / "records.jsonl"
+    monkeypatch.chdir(work)
+
+    append_record(str(rec_file), make_rec(tmp_path, source_log="raw_m_t4_r1.log"))
+    got = list(iter_records(str(rec_file)))
+
+    assert len(got) == 1
+    assert got[0]["source_log"] == str(archive_log)

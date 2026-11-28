@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import re
-import statistics
 
 MAH_TO_JOULE = 12.96  # 0.001 A * 3600 s * 3.6 V = 12.96 J
 

@@ -1,7 +1,6 @@
 """Regression tests for QA findings P1–P5 (fix-qa-p1-p5)."""
 import json
 
-import pytest
 
 from mobench import records as recmod
 from mobench.adapters.llamacpp import LlamacppAdapter
@@ -127,3 +126,44 @@ def test_report_and_stats_split_params_matrix_with_label(tmp_path):
     assert len(srows) == 2
     smd = stats_mod.render_markdown(srows)
     assert "gen_tokens=32" in smd and "gen_tokens=128" in smd
+
+
+def test_verify_tracked_files_non_git_excludes_venv_and_results(tmp_path, monkeypatch):
+    """非 git 兜底模式下，_tracked_files 必须排除 .venv、results 与 configs/local。"""
+    import importlib.util
+    import types
+    from pathlib import Path
+
+    verify_path = Path(__file__).resolve().parents[1] / "scripts" / "verify.py"
+    spec = importlib.util.spec_from_file_location("verify_mod_under_test", verify_path)
+    verify_mod = importlib.util.module_from_spec(spec)
+    assert spec is not None and spec.loader is not None
+    spec.loader.exec_module(verify_mod)
+
+    for rel in (
+        "schema/a.json",
+        ".venv/bad.json",
+        "results/r.json",
+        "configs/local/c.yml",
+        "configs/local/bad.json",
+    ):
+        target = tmp_path / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(verify_mod, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        verify_mod.subprocess,
+        "run",
+        lambda *a, **kw: types.SimpleNamespace(returncode=128, stdout="", stderr="not a git repo"),
+    )
+
+    json_hits = verify_mod._tracked_files("*.json", "**/*.json")
+    assert json_hits == ["schema/a.json"]
+
+    all_hits = verify_mod._tracked_files()
+    assert all_hits == ["schema/a.json"]
+    assert all(
+        not p.startswith((".venv/", "results/", "configs/local/"))
+        for p in all_hits
+    )

@@ -36,18 +36,32 @@ class RecordError(ValueError):
 
 
 def resolve_source_log(source_log: str, base_dir: str | None = None) -> str | None:
-    """按 CWD、records 所在目录、records 同目录 basename 顺序解析原始日志路径。"""
+    """解析原始日志路径：优先归档目录，最后才回退当前工作目录。
+
+    绝对路径先看自身是否存在，再退到 ``base_dir/basename``；相对路径在给定
+    ``base_dir`` 时优先 ``base_dir/source_log`` 与 ``base_dir/basename``，最后
+    才按 CWD 解析。这样 run 目录被整体归档/移动后，同名 CWD 文件不会抢占
+    真正的溯源日志。
+    """
     if not source_log:
         return None
-    if os.path.exists(source_log):
-        return source_log
+    if os.path.isabs(source_log):
+        if os.path.isfile(source_log):
+            return source_log
+        if base_dir:
+            sibling = os.path.join(base_dir, os.path.basename(source_log))
+            if os.path.isfile(sibling):
+                return sibling
+        return None
     if base_dir:
-        rel_cand = os.path.join(base_dir, source_log)
-        if os.path.exists(rel_cand):
-            return rel_cand
-        sib_cand = os.path.join(base_dir, os.path.basename(source_log))
-        if os.path.exists(sib_cand):
-            return sib_cand
+        for candidate in (
+            os.path.join(base_dir, source_log),
+            os.path.join(base_dir, os.path.basename(source_log)),
+        ):
+            if os.path.isfile(candidate):
+                return candidate
+    if os.path.isfile(source_log):
+        return source_log
     return None
 
 
@@ -88,11 +102,12 @@ def append_record(path: str, rec: dict) -> None:
 
     Raises RecordError if the record is invalid; creates parent dirs as needed.
     """
-    errors = validate_record(rec)
+    base_dir = os.path.dirname(os.path.abspath(path))
+    errors = validate_record(rec, base_dir=base_dir)
     if errors:
         raise RecordError("invalid record: " + "; ".join(errors))
     out = normalize_record(rec)
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    os.makedirs(base_dir, exist_ok=True)
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(out, ensure_ascii=False) + "\n")
 
@@ -200,7 +215,10 @@ def _run_invalid_reason(record_file: str) -> str | None:
         with open(run_json, encoding="utf-8") as fh:
             meta = json.load(fh)
     except (OSError, ValueError):
-        return None
+        # 损坏的 run.json 不能当作“无审计信息”静默放行——它的 valid 状态未知。
+        return "unreadable run.json"
+    if not isinstance(meta, dict):
+        return "malformed run.json"
     reasons = []
     if meta.get("valid") is False:
         reasons.append("valid=false")

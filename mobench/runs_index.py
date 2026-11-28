@@ -32,6 +32,25 @@ def row_from_meta(meta, path):
             valid = False
         elif log_ok is True or freq_ok is True:
             valid = True
+    cooldown = meta.get("cooldown")
+    if isinstance(cooldown, dict):
+        cooldown_reached = cooldown.get("reached")
+    else:
+        attempts = meta.get("attempts")
+        if isinstance(attempts, list):
+            vals = [
+                a["cooldown"].get("reached")
+                for a in attempts
+                if isinstance(a, dict) and isinstance(a.get("cooldown"), dict)
+            ]
+            if False in vals:
+                cooldown_reached = False
+            elif True in vals:
+                cooldown_reached = True
+            else:
+                cooldown_reached = None
+        else:
+            cooldown_reached = None
     return {
         "timestamp": meta.get("timestamp"),
         "engine": meta.get("engine"),
@@ -43,6 +62,8 @@ def row_from_meta(meta, path):
         "log_audit_valid": log_ok,
         "freq_audit_valid": freq_ok,
         "valid": valid,
+        "aborted": meta.get("aborted"),
+        "cooldown_reached": cooldown_reached,
         "throttle_risk": meta.get("throttle_risk"),
         "run_dir": os.path.dirname(path),
     }
@@ -60,6 +81,8 @@ def scan_runs(results_dir="results"):
                 meta = json.load(fh)
         except (OSError, json.JSONDecodeError):
             continue  # a broken run.json must not sink the whole index
+        if not isinstance(meta, dict):
+            continue  # 非 JSON 对象（如列表/数字）同样视为损坏 run.json 跳过
         rows.append(row_from_meta(meta, path))
     rows.sort(key=lambda r: r["run_dir"])
     return rows
@@ -67,12 +90,22 @@ def scan_runs(results_dir="results"):
 
 def _flags(row):
     flags = []
+    invalid_marked = False
     if row["recipe_checked"] is True:
         flags.append("recipe-ok")
+    if row.get("aborted"):
+        flags.append("ABORTED")
+        invalid_marked = True
     if row["log_audit_valid"] is False:
         flags.append("AUDIT-INVALID")
+        invalid_marked = True
     if row.get("freq_audit_valid") is False:
         flags.append("FREQ-INVALID")
+        invalid_marked = True
+    if row.get("cooldown_reached") is False:
+        flags.append("COOLDOWN-MISS")
+    if row.get("valid") is False and not invalid_marked:
+        flags.append("INVALID")
     if row["throttle_risk"]:
         flags.append("throttled")
     return ",".join(flags) or "-"

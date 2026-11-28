@@ -994,3 +994,108 @@ def test_validate_ab_side_b_failure_marks_coverage_uncovered(tmp_path, monkeypat
     assert art["coverage"]["decode"]["covered"] is False
     assert "side b" in art["coverage"]["decode"]["reason"]
     assert art["coverage"]["prefill"]["covered"] is True
+
+
+# -- Wave 5 加固：独立 platform_b / 仪器超时降级 / 双列全挂判定 -------------
+
+def test_validate_ab_uses_independent_platform_b(tmp_path, monkeypatch):
+    """A/B 使用各自 platform 实例；B 的 platform dict 不同时独立 preflight。"""
+    from mobench.platform.base import BasePlatform
+    from mobench.platform.host import HostPlatform
+
+    monkeypatch.chdir(tmp_path)
+    cfg_path, cfg_b_path = setup_validate_project(tmp_path, ab=True)
+    body_b = open(cfg_b_path, encoding="utf-8").read().replace(
+        "platform:\n  type: host",
+        "platform:\n  type: host\n  tag: b",
+    )
+    open(cfg_b_path, "w", encoding="utf-8").write(body_b)
+
+    made = []
+    real_make = BasePlatform.make
+
+    def tracking_make(cfg):
+        platform = real_make(cfg)
+        made.append((cfg, platform))
+        return platform
+
+    run_platforms = []
+    real_run = HostPlatform.run
+
+    def tracking_run(self, cmd, log_path, cwd=None, echo=True):
+        run_platforms.append(dict(self.cfg.get("platform") or {}))
+        return real_run(self, cmd, log_path, cwd=cwd, echo=echo)
+
+    monkeypatch.setattr(BasePlatform, "make", staticmethod(tracking_make))
+    monkeypatch.setattr(HostPlatform, "run", tracking_run)
+
+    cfg_a = load_config(cfg_path)
+    cfg_b = load_config(cfg_b_path)
+    art = run_validation(cfg_a, config_b=cfg_b,
+                         config_path=cfg_path, config_b_path=cfg_b_path)
+
+    assert set(art["sides"]) == {"a", "b"}
+    assert len(made) == 2
+    assert made[1][0] is cfg_b
+    assert len({id(platform) for _cfg, platform in made}) == 2
+    assert {"type": "host", "tag": "b"} in run_platforms
+    assert {"type": "host"} in run_platforms
+
+
+def test_validate_instrument_timeout_degrades_and_writes_artifact(tmp_path, monkeypatch):
+    """单个仪器超时 -> unavailable(engine timed out)，其余仪器与工件照常。"""
+    import os
+    import subprocess
+
+    from mobench.platform.host import HostPlatform
+
+    monkeypatch.chdir(tmp_path)
+    cfg_path, _ = setup_validate_project(tmp_path)
+    real_run = HostPlatform.run
+
+    def timeout_completion(self, cmd, log_path, cwd=None, echo=True):
+        if os.path.basename(cmd[0]) == "llama-completion":
+            raise subprocess.TimeoutExpired(cmd, 1)
+        return real_run(self, cmd, log_path, cwd=cwd, echo=echo)
+
+    monkeypatch.setattr(HostPlatform, "run", timeout_completion)
+
+    art = run_validation(load_config(cfg_path), config_path=cfg_path)
+
+    greedy = art["sides"]["a"]["instruments"]["greedy"]
+    assert greedy["status"] == "unavailable"
+    assert greedy["runs"][0]["reason"] == "engine timed out"
+    assert (Path(art["out_dir"]) / "validate.json").is_file()
+    assert art["sides"]["a"]["instruments"]["ppl"]["status"] == "ok"
+
+
+def test_any_instrument_ok_requires_every_side_and_cli_exits_1(tmp_path, monkeypatch, capsys):
+    """side B 全挂时 any_instrument_ok=False，CLI 工件落盘但退出 1。"""
+    from mobench.validation import any_instrument_ok
+
+    monkeypatch.chdir(tmp_path)
+    cfg_path, cfg_b_path = setup_validate_project(tmp_path, ab=True)
+    bin_b = tmp_path / "bin_b"
+    fake_validate_bins(bin_b)
+    for name in ("llama-completion", "llama-perplexity"):
+        script = bin_b / name
+        script.write_text("#!/usr/bin/env python3\nimport sys\nsys.exit(3)\n",
+                          encoding="utf-8")
+        script.chmod(0o755)
+    body_b = open(cfg_b_path, encoding="utf-8").read().replace(
+        "bin_dir: bin", f"bin_dir: {bin_b}")
+    open(cfg_b_path, "w", encoding="utf-8").write(body_b)
+
+    code = cli_main(["validate", "run", "--config", cfg_path,
+                     "--config-b", cfg_b_path, "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 1
+    assert any_instrument_ok(payload) is False
+    assert all(
+        inst["status"] == "unavailable"
+        for name, inst in payload["sides"]["b"]["instruments"].items()
+        if name != "greedy"
+    )
+    assert payload["sides"]["b"]["instruments"]["greedy"]["status"] == "unavailable"
+    assert payload["sides"]["a"]["instruments"]["ppl"]["status"] == "ok"

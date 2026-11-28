@@ -125,3 +125,28 @@ def test_pipeline_without_checks_has_no_audit_key(tmp_path, monkeypatch):
     cfg_path = setup_project(tmp_path)
     meta = run_pipeline(load_config(cfg_path))
     assert "log_audit" not in meta
+
+
+def test_pipeline_forbid_abort_writes_invalid_run_json(tmp_path, monkeypatch):
+    """命中 forbid 中止后仍写 run.json，且 log_audit 带 forbid 证据。"""
+    import json
+
+    from mobench.records import read_paths
+
+    monkeypatch.chdir(tmp_path)
+    cfg_path = setup_project(
+        tmp_path,
+        log_checks_yaml='  log_checks:\n    forbid:\n      - "CPU_REPACK"\n',
+        extra_lines=["cannot be used with CPU_REPACK (test)"])
+    with pytest.raises(RunError):
+        run_pipeline(load_config(cfg_path))
+
+    run_jsons = list((tmp_path / "results").glob("run_*/run.json"))
+    assert len(run_jsons) == 1
+    meta = json.loads(run_jsons[0].read_text(encoding="utf-8"))
+    assert meta["valid"] is False
+    assert meta["aborted"] is True
+    assert meta["log_audit"]["valid"] is False
+    assert meta["log_audit"]["forbid"]["pattern"] == "CPU_REPACK"
+    assert "CPU_REPACK" in meta["error"]
+    assert read_paths([str(tmp_path / "results")]) == []

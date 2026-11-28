@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 import ast
-import glob
+import fnmatch
 import json
 import os
 import re
@@ -72,19 +72,55 @@ def check_version_sync() -> tuple[bool, str]:
     return True, f"5 处版本号一致 ({next(iter(unique))})"
 
 
+_SCAN_EXCLUDED_DIRS = {
+    ".git", ".venv", "__pycache__", ".pytest_cache", "results",
+}
+_SCAN_EXCLUDED_SUFFIXES = (".egg-info",)
+
+
+def _scan_repo_files() -> list[str]:
+    """非 git 环境下扫描仓库文件（排除本地产物与虚拟环境目录）。"""
+    found = []
+    for root, dirs, files in os.walk(REPO_ROOT):
+        rel_root = os.path.relpath(root, REPO_ROOT)
+        rel_parts = [] if rel_root == "." else rel_root.split(os.sep)
+        dirs[:] = [
+            d for d in dirs
+            if d not in _SCAN_EXCLUDED_DIRS
+            and not d.endswith(_SCAN_EXCLUDED_SUFFIXES)
+            and not (rel_parts[-1:] == ["configs"] and d == "local")
+        ]
+        for name in files:
+            found.append(os.path.relpath(os.path.join(root, name), REPO_ROOT))
+    return sorted(found)
+
+
 def _tracked_files(*patterns: str) -> list[str]:
-    proc = subprocess.run(
-        ["git", "ls-files", *patterns],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode == 0 and proc.stdout.strip():
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files", *patterns],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        proc = None
+    if proc is not None and proc.returncode == 0 and proc.stdout.strip():
         return [ln.strip() for ln in proc.stdout.splitlines() if ln.strip()]
-    out = []
-    for pat in patterns:
-        out.extend(glob.glob(str(REPO_ROOT / pat), recursive=True))
-    return sorted({os.path.relpath(p, REPO_ROOT) for p in out})
+    all_files = _scan_repo_files()
+    if not patterns:
+        # 非 git 兜底：扫描整个仓库，避免卫生检查静默通过。
+        return all_files
+    out = set()
+    for rel in all_files:
+        posix = rel.replace(os.sep, "/")
+        for pat in patterns:
+            if fnmatch.fnmatch(posix, pat) or (
+                pat.startswith("**/") and fnmatch.fnmatch(posix, pat[3:])
+            ):
+                out.add(rel)
+                break
+    return sorted(out)
 
 
 def check_schema_and_yaml() -> tuple[bool, str]:
@@ -94,27 +130,31 @@ def check_schema_and_yaml() -> tuple[bool, str]:
     except ImportError as exc:
         return False, f"缺少 PyYAML 或 jsonschema: {exc}"
 
-    json_files = _tracked_files("*.json", "**/*.json")
-    yaml_files = _tracked_files("*.yml", "**/*.yml", "*.yaml", "**/*.yaml")
-    for rel in json_files:
-        path = REPO_ROOT / rel
-        if path.is_file():
-            json.loads(path.read_text(encoding="utf-8"))
-    for rel in yaml_files:
-        path = REPO_ROOT / rel
-        if path.is_file():
-            yaml.safe_load(path.read_text(encoding="utf-8"))
+    try:
+        json_files = _tracked_files("*.json", "**/*.json")
+        yaml_files = _tracked_files("*.yml", "**/*.yml", "*.yaml", "**/*.yaml")
+        for rel in json_files:
+            path = REPO_ROOT / rel
+            if path.is_file():
+                json.loads(path.read_text(encoding="utf-8"))
+        for rel in yaml_files:
+            path = REPO_ROOT / rel
+            if path.is_file():
+                yaml.safe_load(path.read_text(encoding="utf-8"))
 
-    schema = json.loads((REPO_ROOT / "schema" / "mobench.schema.json").read_text(encoding="utf-8"))
-    jsonschema.Draft7Validator.check_schema(schema)
+        schema = json.loads((REPO_ROOT / "schema" / "mobench.schema.json").read_text(encoding="utf-8"))
+        jsonschema.Draft7Validator.check_schema(schema)
 
-    templates = sorted(
-        list((REPO_ROOT / "examples").glob("**/*.yml"))
-        + list((REPO_ROOT / "configs" / "templates").glob("*.yml"))
-    )
-    for path in templates:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-        jsonschema.validate(instance=data, schema=schema)
+        templates = sorted(
+            list((REPO_ROOT / "examples").glob("**/*.yml"))
+            + list((REPO_ROOT / "configs" / "templates").glob("*.yml"))
+        )
+        for path in templates:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            jsonschema.validate(instance=data, schema=schema)
+    except (OSError, ValueError, KeyError, yaml.YAMLError,
+            jsonschema.SchemaError, jsonschema.ValidationError) as exc:
+        return False, f"JSON/YAML/Schema 校验失败: {exc}"
 
     sys.path.insert(0, str(REPO_ROOT))
     from mobench.config import BUILTIN_ENGINES
@@ -149,7 +189,10 @@ def check_repo_hygiene() -> tuple[bool, str]:
     excluded = {".github/workflows/ci.yml", "tools/adb-unc-wrapper.sh", "scripts/verify.py"}
 
     hits = []
-    for rel in _tracked_files():
+    tracked = _tracked_files()
+    if not tracked:
+        return False, "仓库卫生检查未扫描到任何文件（非 git 且扫描为空？）"
+    for rel in tracked:
         if rel in excluded:
             continue
         path = REPO_ROOT / rel
@@ -286,7 +329,7 @@ def check_ruff(require_ruff: bool) -> tuple[bool, str]:
     if not ruff_bin:
         if require_ruff:
             return False, "ruff 未安装（传入了 --require-ruff）"
-        return True, "skipped (ruff not installed locally)"
+        return True, "WARN: ruff not installed locally (skipped; CI enforces --require-ruff)"
     proc = subprocess.run(
         [ruff_bin, "check", "mobench", "tests", "scripts"],
         cwd=REPO_ROOT,

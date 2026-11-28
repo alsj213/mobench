@@ -1,6 +1,5 @@
 """Unit tests for model preparation (spec: benchmark-model-prep)."""
 import io
-import textwrap
 
 import pytest
 

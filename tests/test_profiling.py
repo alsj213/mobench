@@ -99,3 +99,56 @@ def test_flame_html_escapes_notes_and_title():
     assert "<img " not in doc
     assert "&lt;script&gt;t&lt;/script&gt;" in doc
     assert "&lt;img src=x onerror=alert(1)&gt;" in doc
+
+
+# -- Wave 5 加固：symfs 镜像必须与 adb bin tag 一致 ------------------------
+
+def test_mirror_bin_dir_uses_platform_bin_tag(tmp_path):
+    import os
+
+    from mobench.platform.adb import REMOTE_DIR, AdbPlatform
+
+    bin_dir = tmp_path / "android-bin"
+    bin_dir.mkdir()
+    (bin_dir / "llm_bench").write_text("elf", encoding="utf-8")
+    (bin_dir / "libMNN.so").write_text("elf", encoding="utf-8")
+
+    target = profiling.mirror_bin_dir(str(bin_dir), str(tmp_path / "symfs"))
+
+    tag = AdbPlatform._bin_dir_tag(str(bin_dir))
+    expected = os.path.join(
+        str(tmp_path / "symfs"), REMOTE_DIR.lstrip("/"), *tag.split("/"))
+    assert target == expected
+    assert os.path.isfile(os.path.join(target, "llm_bench"))
+    assert os.path.isfile(os.path.join(target, "libMNN.so"))
+
+    # 空 bin_dir 保持历史路径，不再抛 FileNotFoundError
+    empty_target = profiling.mirror_bin_dir("", str(tmp_path / "symfs_empty"))
+    assert empty_target == os.path.join(
+        str(tmp_path / "symfs_empty"), "data/local/tmp/mobench/bin")
+    assert os.path.isdir(empty_target)
+
+
+def test_capture_adb_quotes_perf_data_path(tmp_path):
+    """simpleperf report 的 perf.data 路径必须 shell quote。"""
+    import types
+
+    class FakeAdb:
+        def run_profiled(self, cmd, freq=2000, events=None, mmap_pages=None):
+            return {"record_rc": 0, "perf_data": "/data/local/tmp/a b/perf.data",
+                    "stat_text": "", "samples_lost_hint": None}
+
+        def __init__(self):
+            self.calls = []
+
+        def _exec(self, args, timeout=120):
+            self.calls.append(args)
+            return types.SimpleNamespace(returncode=0, stdout="top", stderr="")
+
+    fake = FakeAdb()
+
+    profiling._capture_adb(fake, ["./llm_bench"], 2000, [], str(tmp_path / "perf.data"))
+
+    report_calls = [c for c in fake.calls if "simpleperf report" in c[1]]
+    assert report_calls
+    assert "'/data/local/tmp/a b/perf.data'" in report_calls[0][1]

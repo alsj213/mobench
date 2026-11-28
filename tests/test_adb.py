@@ -1,5 +1,4 @@
 """adb platform tests (spec: benchmark-core 平台抽象 host 与 adb)."""
-import subprocess
 
 import pytest
 
@@ -151,11 +150,12 @@ def test_run_syncs_local_bin_dir_and_runs_there(tmp_path, monkeypatch):
 
     # Assert: whole bin dir + model pushed once; runs from bin dir w/ LD_LIBRARY_PATH
     assert rc == 0
-    remote_push = sorted(p for p in payload["pushed"] if "mobench/bin" in p)
+    bin_tag = AdbPlatform._bin_dir_tag(str(bin_dir))
+    remote_push = sorted(p for p in payload["pushed"] if f"mobench/{bin_tag}" in p)
     assert [p.rsplit("/", 1)[-1] for p in remote_push] == ["libllama-common.so", "llama-bench"]
     assert any(p.endswith("/q.gguf") and "mobench/" in p for p in payload["pushed"])
     script = payload["shell_cmds"][-1]
-    assert "cd /data/local/tmp/mobench/bin && LD_LIBRARY_PATH=. ./llama-bench" in script
+    assert f"cd /data/local/tmp/mobench/{bin_tag} && LD_LIBRARY_PATH=. ./llama-bench" in script
     assert "bench-out" in log.read_text(encoding="utf-8")
 
 
@@ -553,3 +553,125 @@ def test_adb_run_applies_configured_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr(plat, "_exec", fake_exec)
     plat.run(["echo"], str(tmp_path / "out.log"))
     assert seen["timeout"] == 45
+
+
+# -- Wave 5 加固：bin 目录哈希隔离 / 超时落盘 / 设备核数回退 ----------------
+
+def test_different_bin_dirs_map_to_isolated_remote_dirs(tmp_path, monkeypatch):
+    """同名 bin 目录（不同绝对路径）必须映射到不同远端目录，互不删除。"""
+    bin_a = tmp_path / "A" / "bin"
+    bin_b = tmp_path / "B" / "bin"
+    for d in (bin_a, bin_b):
+        d.mkdir(parents=True)
+        (d / "llama-bench").write_text("x", encoding="utf-8")
+        (d / "libMNN.so").write_text("y", encoding="utf-8")
+
+    tag_a = AdbPlatform._bin_dir_tag(str(bin_a))
+    tag_b = AdbPlatform._bin_dir_tag(str(bin_b))
+    assert tag_a != tag_b
+    assert tag_a.startswith("bin/bin_") and tag_b.startswith("bin/bin_")
+
+    shell_cmds = []
+
+    class Proc:
+        def __init__(self, rc=0, stdout=""):
+            self.returncode = rc
+            self.stdout = stdout
+            self.stderr = ""
+
+    def fake_run(args, *a, **kw):
+        shell_str = " ".join(args[4:]) if len(args) > 4 else ""
+        shell_cmds.append(shell_str)
+        if shell_str.startswith("ls -1 "):
+            return Proc(0, "stale.so\n")
+        return Proc(0, "")
+
+    monkeypatch.setattr(adb_mod.subprocess, "run", fake_run)
+    plat = AdbPlatform(make_cfg())
+    remote_a = plat._sync_dir(str(bin_a), tag_a, chmod_exec=True, clean_stale=True)
+    remote_b = plat._sync_dir(str(bin_b), tag_b, chmod_exec=True, clean_stale=True)
+
+    assert remote_a != remote_b
+    # 缓存键是 (tag, local_dir)，不同目录不会命中同一条目
+    assert (tag_a, str(bin_a)) in plat._synced
+    assert (tag_b, str(bin_b)) in plat._synced
+    rm_cmds = [c for c in shell_cmds if c.startswith("rm -f ")]
+    assert rm_cmds, "clean_stale 应清理各自目录内的陈旧文件"
+    for cmd in rm_cmds:
+        for other in (tag_a, tag_b):
+            if other in cmd:
+                assert f"mobench/{other}/stale.so" in cmd
+
+
+def test_sync_dir_md5_check_uses_scaled_push_timeout(tmp_path, monkeypatch):
+    """远端 md5 探测也必须使用按体积放大的超时，避免大权重读校验被 120s 截断。"""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    big = _sparse_file(bin_dir / "llm.mnn.weight", 3_200_000_000)
+    monkeypatch.setattr(adb_mod, "file_md5", lambda path: "0" * 32)
+    seen = []
+    plat = AdbPlatform(make_cfg())
+
+    def fake_shell(cmd, timeout=120):
+        seen.append(timeout)
+        return 1, ""
+
+    monkeypatch.setattr(plat, "_shell", fake_shell)
+    monkeypatch.setattr(plat, "_push_file", lambda *a, **k: None)
+    plat._sync_dir(str(bin_dir), AdbPlatform._bin_dir_tag(str(bin_dir)),
+                   chmod_exec=True, clean_stale=True)
+
+    assert max(seen) >= adb_mod.push_timeout(str(big)) > adb_mod.PUSH_MIN_TIMEOUT_S
+
+
+def test_adb_run_timeout_writes_partial_output_and_cleans_remote_process(tmp_path, monkeypatch):
+    """adb 超时：部分输出 + 显式标记落盘，并 best-effort 清理设备孤儿进程。"""
+    plat = AdbPlatform(make_cfg())
+    monkeypatch.setattr(plat, "_deploy_command", lambda cmd: "./llama-bench -m x")
+    cleanup = []
+
+    def fake_exec(args, timeout=120):
+        raise adb_mod.subprocess.TimeoutExpired(
+            args, timeout, output=b"partial-benchtop\n", stderr="partial-err\n")
+
+    def fake_shell(cmd, timeout=120):
+        cleanup.append((cmd, timeout))
+        return 0, ""
+
+    monkeypatch.setattr(plat, "_exec", fake_exec)
+    monkeypatch.setattr(plat, "_shell", fake_shell)
+    log = tmp_path / "timeout.log"
+
+    with pytest.raises(adb_mod.subprocess.TimeoutExpired):
+        plat.run(["/local/bin/llama-bench", "-m", "x"], str(log))
+
+    text = log.read_text(encoding="utf-8")
+    assert "partial-benchtop" in text
+    assert "partial-err" in text
+    assert "[mobench] adb command timed out after 600s" in text
+    assert cleanup
+    cleanup_cmd, cleanup_timeout = cleanup[0]
+    assert "pkill -9 -x llama-bench" in cleanup_cmd[0]
+    assert cleanup_timeout == 15
+
+
+def test_known_cpus_falls_back_to_device_nproc(monkeypatch):
+    """无 cpufreq 策略时用设备 nproc，而不是宿主机核数。"""
+    plat = AdbPlatform(make_cfg())
+    monkeypatch.setattr(plat, "_ensure_policies", lambda: [])
+    monkeypatch.setattr(plat, "_shell", lambda cmd, timeout=60: (0, "8\n"))
+
+    assert plat._known_cpus() == set(range(8))
+
+
+def test_control_syncs_degraded_state_into_preflight_info(monkeypatch):
+    """control() 的降级状态必须同步回 preflight info（run.json 可溯源）。"""
+    plat = AdbPlatform(make_cfg())
+    monkeypatch.setattr(plat, "_ensure_policies", lambda: [])
+    monkeypatch.setattr(plat, "_is_root", lambda: False)
+    info = {"platform": {"value": "adb"}}
+
+    plat.control({"methodology": {"env_control": "auto"}}, info)
+
+    assert "degraded" in info["env_control"]["value"].lower()
+    assert info["env_control"]["value"] == plat._env_control_label

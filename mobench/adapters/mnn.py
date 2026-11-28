@@ -18,6 +18,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 
 from mobench.adapters.base import AdapterError, EngineAdapter, _find_binary
 
@@ -207,8 +208,13 @@ class MnnAdapter(EngineAdapter):
         }
 
     def _parse_llm_rows(self, text, log_path, model, threads, round_no):
-        """Parse llm_bench stdout rows (``pp<n>``/``tg<n>`` + ``t/s``)."""
+        """Parse llm_bench stdout rows (``pp<n>``/``tg<n>`` + ``t/s``).
+
+        llm_bench 可能重复打印同一 ``(kind, n)`` 行（例如内部多次 repeat），
+        直接展开会让样本数 n 虚增；这里按首次出现去重并向 stderr 告警。
+        """
         parsed_rows = []
+        seen = set()
         for kind, n_raw, tps_raw in LLM_ROW.findall(text):
             try:
                 n_val = int(n_raw)
@@ -217,6 +223,16 @@ class MnnAdapter(EngineAdapter):
                 continue
             if tps <= 0:
                 continue
+            key = (kind, n_val)
+            if key in seen:
+                print(
+                    f"Warning: duplicate llm_bench row {kind}{n_val} in "
+                    f"{log_path}; keeping first occurrence and skipping later "
+                    f"duplicates",
+                    file=sys.stderr,
+                )
+                continue
+            seen.add(key)
             parsed_rows.append((kind, n_val, tps))
         multi_pp = len({n for k, n, _ in parsed_rows if k == "pp"}) > 1
         multi_tg = len({n for k, n, _ in parsed_rows if k == "tg"}) > 1
@@ -224,7 +240,16 @@ class MnnAdapter(EngineAdapter):
         records = []
         for kind, n_val, tps in parsed_rows:
             if kind == "tg":
-                params = {**(base_params or {}), "gen_tokens": n_val} if multi_tg else base_params
+                if multi_tg:
+                    params = {**(base_params or {}), "gen_tokens": n_val}
+                elif (base_params is not None
+                      and "gen_tokens" in base_params
+                      and base_params["gen_tokens"] != n_val):
+                    # workload 已声明但日志实测不同（如 cli_args 覆盖）：
+                    # 以日志实测值为准，避免参数溯源撒谎。
+                    params = {**base_params, "gen_tokens": n_val}
+                else:
+                    params = base_params
                 records.append(
                     self._rec(
                         model, threads, round_no, "gen_tok_s", tps, "tok/s", log_path, params=params
@@ -243,9 +268,15 @@ class MnnAdapter(EngineAdapter):
                     )
                 )
             elif kind == "pp":
-                params = (
-                    {**(base_params or {}), "prompt_tokens": n_val} if multi_pp else base_params
-                )
+                if multi_pp:
+                    # 多长度场景只标注本行的 prompt_tokens，不混入 gen_tokens。
+                    params = {"prompt_tokens": n_val}
+                elif (base_params is not None
+                      and "prompt_tokens" in base_params
+                      and base_params["prompt_tokens"] != n_val):
+                    params = {**base_params, "prompt_tokens": n_val}
+                else:
+                    params = base_params
                 records.append(
                     self._rec(
                         model,

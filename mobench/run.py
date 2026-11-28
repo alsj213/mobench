@@ -17,7 +17,7 @@ import time
 from mobench import build_recipe, log_probe, records as recmod
 from mobench.adapters.base import AdapterError, get_adapter
 from mobench.artifacts_hash import artifact_set_md5
-from mobench.config import BUILTIN_ENGINES, ConfigError, load_config
+from mobench.config import BUILTIN_ENGINES, ConfigError, load_config, validate
 from mobench.io_utils import atomic_write_json, make_run_dir
 from mobench.platform.base import BasePlatform, PlatformError
 
@@ -57,7 +57,12 @@ def _cooldown_wait(platform, methodology, emit, sleep=None, interval=30):
     waited = 0
     while True:
         temp = platform.sample_thermal()["temp_c"].get("value")
-        if temp is None or temp <= target:
+        if temp is None:
+            # 温度不可读时绝不能假装已到达目标温度（reached=True 会误导）。
+            return {"target_c": target, "waited_s": waited,
+                    "reached": False, "temp_c": None,
+                    "reason": "temperature unavailable"}
+        if temp <= target:
             return {"target_c": target, "waited_s": waited,
                     "reached": True, "temp_c": temp}
         if waited >= max_s:
@@ -114,34 +119,7 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
                 f"model file missing: {m['path']}. Run `mobench prepare` first.",
             )
 
-    # -- run dir & hashes ------------------------------------------------------
-    results_dir = cfg.get("results_dir", "results")
-    ts, run_dir = make_run_dir(results_dir, "run")
-    records_path = os.path.join(run_dir, "records.jsonl")
-    threads_list = threads_override or cfg["workload"]["threads"]
-    rounds = rounds_override or cfg["workload"]["rounds"]
-
-    meta = {
-        "schema": "mobench/run@1",
-        "timestamp": ts,
-        "engine": cfg["engine"],
-        "engine_version": engine_version,
-        "binary": {"path": binary, "md5": artifact_set_md5(binary),
-                   "md5_scope": "artifact_set(binary+*.so)"},
-        "build_recipe": build_recipe_info,
-        "models": [
-            {"id": m["id"], "path": m["path"], "md5": _model_md5(platform, m["path"])}
-            for m in models
-        ],
-        "platform": info,
-        "throttle_risk": throttled,
-        "records": records_path,
-        "n_records": 0,
-    }
-    if label:
-        meta["label"] = label
-
-    # -- log probes (optional; compile before any device time is spent) --------
+    # -- log probes & methodology (validate before any run dir / device time) --
     methodology = dict(cfg.get("methodology") or {})
     try:
         log_checks = log_probe.compile_checks(methodology)
@@ -151,9 +129,56 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
     # -- thermal frequency floor & round retry controls -----------------------
     freq_floor = methodology.get("freq_floor_mhz")
     cooldown_per_round = bool(methodology.get("cooldown_per_round", False))
-    max_attempts = int(methodology.get("max_attempts") or 1)
+    if cooldown_per_round and methodology.get("cooldown_c") is None:
+        raise RunError(
+            "config",
+            "methodology.cooldown_per_round requires methodology.cooldown_c",
+        )
+    raw_max_attempts = methodology.get("max_attempts")
+    max_attempts = 1 if raw_max_attempts is None else int(raw_max_attempts)
     if max_attempts < 1:
         raise RunError("config", f"methodology.max_attempts must be >= 1, got {max_attempts}")
+
+    # -- run dir & hashes ------------------------------------------------------
+    results_dir = cfg.get("results_dir", "results")
+    ts, run_dir = make_run_dir(results_dir, "run")
+    records_path = os.path.join(run_dir, "records.jsonl")
+    try:
+        threads_list = threads_override or cfg["workload"]["threads"]
+        rounds = rounds_override or cfg["workload"]["rounds"]
+
+        meta = {
+            "schema": "mobench/run@1",
+            "timestamp": ts,
+            "engine": cfg["engine"],
+            "engine_version": engine_version,
+            "binary": {"path": binary, "md5": artifact_set_md5(binary),
+                       "md5_scope": "artifact_set(binary+*.so*)"},
+            "build_recipe": build_recipe_info,
+            "models": [
+                {"id": m["id"], "path": m["path"], "md5": _model_md5(platform, m["path"])}
+                for m in models
+            ],
+            "platform": info,
+            "throttle_risk": throttled,
+            "records": records_path,
+            "n_records": 0,
+        }
+    except BaseException as exc:
+        # 即使 run_dir 创建后、执行循环前的元数据构造/哈希失败也要留证。
+        atomic_write_json(os.path.join(run_dir, "run.json"), {
+            "schema": "mobench/run@1",
+            "timestamp": ts,
+            "engine": cfg.get("engine"),
+            "records": records_path,
+            "n_records": 0,
+            "valid": False,
+            "aborted": True,
+            "error": str(exc),
+        })
+        raise
+    if label:
+        meta["label"] = label
 
     # -- execute: threads x rounds, tee raw logs ------------------------------
     def _emit(step, message):
@@ -166,6 +191,8 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
     freq_violations = []
     attempts_log = []
     cooldown = None
+    run_error = None
+    forbid_hit = None
     try:
         # -- env control ------------------------------------------------------
         platform.control(cfg, meta)
@@ -251,7 +278,8 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
                     if log_checks:
                         forb = log_probe.scan_forbid(log_path, log_checks)
                         if forb:
-                            v = forb[0]
+                            forbid_hit = forb[0]
+                            v = forbid_hit
                             raise RunError(
                                 "execution",
                                 f"日志命中禁项 {v['pattern']!r}"
@@ -282,24 +310,47 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
                         }
                         recmod.append_record(records_path, rec)
                         meta["n_records"] += 1
+    except BaseException as exc:
+        run_error = exc
+        raise
     finally:
-        platform.restore()
+        restore_error = None
+        try:
+            platform.restore()
+        except BaseException as r_exc:
+            restore_error = r_exc
+        final_error = run_error if run_error is not None else restore_error
+        try:
+            meta["throttle_risk"] = throttled
+            meta["measurement_conditions"] = conditions
+            meta["valid"] = (not log_violations) and (not freq_violations)
+            if cooldown is not None:
+                meta["cooldown"] = cooldown
+            if attempts_log:
+                meta["attempts"] = attempts_log
+            if log_checks:
+                audit = {"valid": not log_violations,
+                         "violations": log_violations}
+                if forbid_hit is not None:
+                    audit["valid"] = False
+                    audit["forbid"] = forbid_hit
+                meta["log_audit"] = audit
+            if freq_floor is not None:
+                meta["freq_audit"] = {"valid": not freq_violations,
+                                      "violations": freq_violations}
+            if final_error is not None:
+                meta["valid"] = False
+                meta["aborted"] = True
+                meta["error"] = str(final_error)
+                if run_error is not None and restore_error is not None:
+                    meta["restore_error"] = str(restore_error)
+        finally:
+            meta_path = os.path.join(run_dir, "run.json")
+            atomic_write_json(meta_path, meta)
+        if run_error is None and restore_error is not None:
+            # 主流程成功但 restore 失败：工件已标无效，仍向上传播该错误。
+            raise restore_error
 
-    meta["throttle_risk"] = throttled
-    meta["measurement_conditions"] = conditions
-    meta["valid"] = (not log_violations) and (not freq_violations)
-    if cooldown is not None:
-        meta["cooldown"] = cooldown
-    if attempts_log:
-        meta["attempts"] = attempts_log
-    if log_checks:
-        meta["log_audit"] = {"valid": not log_violations,
-                             "violations": log_violations}
-    if freq_floor is not None:
-        meta["freq_audit"] = {"valid": not freq_violations,
-                              "violations": freq_violations}
-    meta_path = os.path.join(run_dir, "run.json")
-    atomic_write_json(meta_path, meta)
     return meta
 
 
@@ -322,6 +373,11 @@ def main(args) -> int:
             meth_overrides["max_attempts"] = args.max_attempts
         if meth_overrides:
             cfg = {**cfg, "methodology": {**(cfg.get("methodology") or {}), **meth_overrides}}
+        # CLI 覆盖后必须重新过一遍配置校验（例如 --cooldown-per-round 缺
+        # cooldown_c、或 --cooldown-c 为负数），不能绕过 load_config 的门禁。
+        problems = validate(cfg)
+        if problems:
+            raise ConfigError("invalid effective config: " + "; ".join(problems))
         meta = run_pipeline(cfg, model_filter=args.model,
                             threads_override=[args.threads] if args.threads else None,
                             rounds_override=args.rounds, json_mode=args.json,

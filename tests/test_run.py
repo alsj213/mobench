@@ -308,3 +308,230 @@ def test_stats_regression_report_skip_invalid_runs_unless_flag(tmp_path, monkeyp
 
     assert cli_main(["report", str(tmp_path / "results"), "--include-invalid", "--out", str(tmp_path / "rpt")]) == 0
     assert (tmp_path / "rpt" / "benchmark_report.md").is_file()
+
+
+# -- Wave 5 加固：中止落盘 / 冷却不可读 / CLI 覆盖复验 -----------------------
+
+
+def _write_failing_round_binary(tmp_path):
+    """第 1 轮成功、第 2 轮非零退出的假 llama-bench。"""
+    marker = tmp_path / "round_count.txt"
+    script = tmp_path / "bin" / "llama-bench"
+    script.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, pathlib, sys\n"
+        "if '--version' in sys.argv:\n"
+        "    print('fake 1.0')\n"
+        "    sys.exit(0)\n"
+        f"m = pathlib.Path({str(marker)!r})\n"
+        "n = int(m.read_text()) + 1 if m.exists() else 1\n"
+        "m.write_text(str(n))\n"
+        "if n >= 2:\n"
+        "    sys.stderr.write('second round failed\\n')\n"
+        "    sys.exit(1)\n"
+        "print(json.dumps({'results': [{'n_prompt': 64, 'n_gen': 128, "
+        "'t_prompt_processing': 3.2, 't_generation': 21.0}]}))\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+
+
+def test_run_second_round_failure_writes_aborted_run_json(tmp_path, monkeypatch):
+    """第 2 轮 rc!=0 中止后 run.json 必须存在并标 valid=false/aborted=true。"""
+    # Arrange
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+    _write_failing_round_binary(tmp_path)
+
+    # Act
+    with pytest.raises(RunError, match="engine exited 1"):
+        run_pipeline(load_config(cfg_path))
+
+    # Assert: run.json 落盘；残留 records.jsonl 默认被 read_paths 拦截
+    from mobench.records import read_paths
+
+    run_jsons = list((tmp_path / "results").glob("run_*/run.json"))
+    assert len(run_jsons) == 1
+    meta = json.loads(run_jsons[0].read_text(encoding="utf-8"))
+    assert meta["valid"] is False
+    assert meta["aborted"] is True
+    assert "engine exited 1" in meta["error"]
+    assert (run_jsons[0].parent / "records.jsonl").exists()
+    assert read_paths([str(tmp_path / "results")]) == []
+
+
+def test_cooldown_wait_temp_unavailable_never_reports_reached():
+    from mobench.run import _cooldown_wait
+
+    # Arrange: 温度不可读（None）——不得标 reached=True
+    platform = _FakeBandPlatform([None])
+    slept = []
+
+    # Act
+    res = _cooldown_wait(platform, {"cooldown_c": 45, "cooldown_max_s": 600},
+                         lambda *a: None, sleep=slept.append)
+
+    # Assert
+    assert res["reached"] is False
+    assert res["temp_c"] is None
+    assert res["reason"] == "temperature unavailable"
+    assert slept == []
+
+
+def test_run_cli_rejects_cooldown_per_round_without_cooldown_c(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+
+    code = cli_main(["run", "--config", cfg_path, "--cooldown-per-round"])
+
+    assert code == 1
+    assert "cooldown_per_round requires methodology.cooldown_c" in capsys.readouterr().err
+
+
+def test_run_cli_rejects_negative_cooldown_c(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+
+    code = cli_main(["run", "--config", cfg_path, "--cooldown-c", "-1"])
+
+    assert code == 1
+    assert "cooldown_c" in capsys.readouterr().err
+
+
+def test_run_timeout_is_recorded_as_rc_124_and_retried(tmp_path, monkeypatch):
+    """平台抛 TimeoutExpired -> rc=124 记入 attempts，并按 max_attempts 重试。"""
+    import subprocess
+
+    from mobench.platform.host import HostPlatform
+
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+    real_run = HostPlatform.run
+    calls = {"n": 0}
+
+    def flaky_run(self, cmd, log_path, cwd=None, echo=True):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise subprocess.TimeoutExpired(cmd, 1)
+        return real_run(self, cmd, log_path, cwd=cwd, echo=echo)
+
+    monkeypatch.setattr(HostPlatform, "run", flaky_run)
+    cfg = load_config(cfg_path)
+    cfg["methodology"]["max_attempts"] = 2
+
+    meta = run_pipeline(cfg)
+
+    assert meta["valid"] is True
+    assert meta["attempts"][0]["rc"] == 124
+    assert meta["attempts"][1]["rc"] == 0
+
+
+def test_run_cli_forwards_cooldown_and_retry_overrides(tmp_path, monkeypatch):
+    """CLI 覆盖必须进入最终 cfg（并被重新校验）。"""
+    from mobench import run as run_mod
+
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+    seen = {}
+
+    def fake_pipeline(cfg, **kwargs):
+        seen["cfg"] = cfg
+        return {"throttle_risk": False, "n_records": 0,
+                "records": "x", "valid": True}
+
+    monkeypatch.setattr(run_mod, "run_pipeline", fake_pipeline)
+
+    code = cli_main([
+        "run", "--config", cfg_path, "--json",
+        "--cooldown-c", "40", "--cooldown-per-round", "--max-attempts", "3",
+    ])
+
+    assert code == 0
+    meth = seen["cfg"]["methodology"]
+    assert meth["cooldown_c"] == 40.0
+    assert meth["cooldown_per_round"] is True
+    assert meth["max_attempts"] == 3
+
+
+def test_run_restore_failure_after_success_writes_invalid_run_json(tmp_path, monkeypatch):
+    """主流程成功但 restore 抛错：工件标无效后原样传播。"""
+    from mobench.platform.host import HostPlatform
+
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+
+    def boom(self):
+        raise RuntimeError("restore exploded")
+
+    monkeypatch.setattr(HostPlatform, "restore", boom)
+
+    with pytest.raises(RuntimeError, match="restore exploded"):
+        run_pipeline(load_config(cfg_path))
+
+    run_json = list((tmp_path / "results").glob("run_*/run.json"))[0]
+    meta = json.loads(run_json.read_text(encoding="utf-8"))
+    assert meta["valid"] is False
+    assert meta["aborted"] is True
+    assert "restore exploded" in meta["error"]
+
+
+def test_restore_failure_does_not_mask_original_run_error(tmp_path, monkeypatch):
+    """执行失败 + restore 失败：run.json 保留原始错误，并另记 restore_error。"""
+    from mobench.platform.host import HostPlatform
+
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+    _write_failing_round_binary(tmp_path)
+
+    def boom(self):
+        raise RuntimeError("restore exploded")
+
+    monkeypatch.setattr(HostPlatform, "restore", boom)
+
+    with pytest.raises(RunError, match="engine exited 1"):
+        run_pipeline(load_config(cfg_path))
+
+    run_json = list((tmp_path / "results").glob("run_*/run.json"))[0]
+    meta = json.loads(run_json.read_text(encoding="utf-8"))
+    assert meta["valid"] is False
+    assert meta["aborted"] is True
+    assert "engine exited 1" in meta["error"]
+    assert "restore exploded" in meta["restore_error"]
+
+
+def test_run_meta_construction_failure_still_writes_aborted_run_json(tmp_path, monkeypatch):
+    """run_dir 已创建后、执行前的元数据/哈希失败也必须留下 aborted run.json。"""
+    from mobench import run as run_mod
+
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+
+    def boom(_binary):
+        raise RuntimeError("hash boom")
+
+    monkeypatch.setattr(run_mod, "artifact_set_md5", boom)
+
+    with pytest.raises(RuntimeError, match="hash boom"):
+        run_pipeline(load_config(cfg_path))
+
+    run_jsons = list((tmp_path / "results").glob("run_*/run.json"))
+    assert len(run_jsons) == 1
+    meta = json.loads(run_jsons[0].read_text(encoding="utf-8"))
+    assert meta["valid"] is False
+    assert meta["aborted"] is True
+    assert "hash boom" in meta["error"]
+
+
+def test_run_pipeline_rejects_zero_max_attempts_before_creating_run_dir(tmp_path, monkeypatch):
+    """直接调用 run_pipeline 时 max_attempts=0 必须在创建 run_dir 前被拒绝。"""
+    monkeypatch.chdir(tmp_path)
+    _, cfg_path = setup_project(tmp_path)
+    cfg = load_config(cfg_path)
+    cfg["methodology"]["max_attempts"] = 0
+
+    with pytest.raises(RunError, match="max_attempts"):
+        run_pipeline(cfg)
+
+    results_dir = tmp_path / "results"
+    run_dirs = list(results_dir.glob("run_*")) if results_dir.exists() else []
+    assert run_dirs == []
