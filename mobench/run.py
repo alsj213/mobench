@@ -7,7 +7,6 @@ always tee'd so every record traces to a non-empty source log.
 """
 from __future__ import annotations
 
-import datetime
 import json
 import os
 import shutil
@@ -19,6 +18,7 @@ from mobench import build_recipe, log_probe, records as recmod
 from mobench.adapters.base import AdapterError, get_adapter
 from mobench.artifacts_hash import artifact_set_md5
 from mobench.config import BUILTIN_ENGINES, ConfigError, load_config
+from mobench.io_utils import atomic_write_json, make_run_dir
 from mobench.platform.base import BasePlatform, PlatformError
 
 TEMP_THROTTLE_C = 45.0
@@ -116,9 +116,7 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
 
     # -- run dir & hashes ------------------------------------------------------
     results_dir = cfg.get("results_dir", "results")
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_dir = os.path.join(results_dir, f"run_{ts}")
-    os.makedirs(run_dir, exist_ok=True)
+    ts, run_dir = make_run_dir(results_dir, "run")
     records_path = os.path.join(run_dir, "records.jsonl")
     threads_list = threads_override or cfg["workload"]["threads"]
     rounds = rounds_override or cfg["workload"]["rounds"]
@@ -301,8 +299,7 @@ def run_pipeline(cfg, model_filter=None, threads_override=None,
         meta["freq_audit"] = {"valid": not freq_violations,
                               "violations": freq_violations}
     meta_path = os.path.join(run_dir, "run.json")
-    with open(meta_path, "w", encoding="utf-8") as fh:
-        json.dump(meta, fh, indent=2, ensure_ascii=False)
+    atomic_write_json(meta_path, meta)
     return meta
 
 

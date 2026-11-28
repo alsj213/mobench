@@ -13,6 +13,7 @@ import json
 import os
 
 from mobench.adapters.base import AdapterError, get_adapter
+from mobench.io_utils import atomic_write_json
 from mobench.platform.base import BasePlatform, PlatformError
 
 
@@ -90,15 +91,16 @@ def main(args) -> int:
     except PlatformError as exc:
         print(f"env: error: {exc}", file=sys.stderr)
         return 1
+    no_save = bool(getattr(args, "no_save", False))
     out_path = args.out
-    if not out_path:
-        results_dir = cfg.get("results_dir", "results")
-        os.makedirs(results_dir, exist_ok=True)
-        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_path = os.path.join(results_dir, f"env_snapshot_{ts}.json")
-    with open(out_path, "w", encoding="utf-8") as fh:
-        json.dump(snap, fh, indent=2, ensure_ascii=False)
-    if args.json or not args.out:
+    if not no_save:
+        if not out_path:
+            results_dir = cfg.get("results_dir", "results")
+            os.makedirs(results_dir, exist_ok=True)
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            out_path = os.path.join(results_dir, f"env_snapshot_{ts}.json")
+        atomic_write_json(out_path, snap)
+    if args.json or no_save or not args.out:
         print(json.dumps(snap, indent=2, ensure_ascii=False))
     else:
         print(f"Env snapshot: {out_path}")

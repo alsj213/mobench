@@ -148,6 +148,8 @@ def build_parser():
     p = sub.add_parser("env", help="capture environment snapshot")
     _config_path_arg(p)
     p.add_argument("--out", default=None, help="output JSON path")
+    p.add_argument("--no-save", action="store_true",
+                   help="print snapshot without writing results/env_snapshot_*.json")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_env)
 

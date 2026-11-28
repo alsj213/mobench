@@ -87,7 +87,7 @@ def run(config: str, expect_handoff: str | None = None,
         want = h.get("binary_md5")
         if not want:
             raise ToolError("I6: handoff 未记录 binary_md5，无法锚定测量")
-        snap = _run_cli("env", ["--config", config])
+        snap = _run_cli("env", ["--config", config, "--no-save"])
         got = (snap.get("binary") or {}).get("md5")
         if got != want:
             raise ToolError(f"I6: 二进制哈希不匹配 handoff={want} measured={got}（测的不是那个改动）")

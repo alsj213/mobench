@@ -13,6 +13,7 @@ import json
 import os
 import statistics
 
+from mobench.io_utils import atomic_write_json
 from mobench.records import group_key, read_paths
 
 DEFAULT_THRESHOLD_PCT = 5.0
@@ -64,9 +65,7 @@ def save_baseline(baseline_path, records, extra=None):
         **(extra or {}),
         "groups": {json.dumps(k, ensure_ascii=False): v for k, v in group_samples(records).items()},
     }
-    os.makedirs(os.path.dirname(os.path.abspath(baseline_path)), exist_ok=True)
-    with open(baseline_path, "w", encoding="utf-8") as fh:
-        json.dump(payload, fh, indent=2, ensure_ascii=False)
+    atomic_write_json(baseline_path, payload)
     return payload
 
 

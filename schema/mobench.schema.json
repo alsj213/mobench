@@ -253,6 +253,14 @@
           "default": 1,
           "description": "Maximum execution attempts per round when the engine exits non-zero or times out."
         },
+        "timeout_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "Per-round command execution timeout in seconds."
+        },
         "freq_floor_mhz": {
           "type": [
             "number",
